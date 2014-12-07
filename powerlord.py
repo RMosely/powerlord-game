@@ -1,27 +1,27 @@
 #!/usr/bin/python
 #
-# libtcod python tutorial
-#
+#POWERLORD
+#2014 Russell Mosely
 
 import libtcodpy as libtcod
 import math
 import textwrap
 import shelve
-#import pygame
+
 
 #--------------------
 #Window size / camera
 #--------------------
-SCREEN_WIDTH = 100
-SCREEN_HEIGHT = 70
+SCREEN_WIDTH = 100#100
+SCREEN_HEIGHT = 70#70
 #Size of the map portion shown on-screen
 
 
 #--------
 #Map size
 #--------
-MAP_WIDTH = 100
-MAP_HEIGHT = 100
+MAP_WIDTH = 100#100
+MAP_HEIGHT = 100#100
 
 #------------
 #GUI elements
@@ -34,54 +34,42 @@ MSG_WIDTH = SCREEN_WIDTH
 MSG_HEIGHT = PANEL_HEIGHT - 1
 INVENTORY_WIDTH = 50
 
-CAMERA_WIDTH = 80
+CAMERA_WIDTH = 80 #63
 CAMERA_HEIGHT = SCREEN_HEIGHT - PANEL_HEIGHT
-#CAMERA_HEIGHT = 63
 
-#Set bottom panel to match color of right panel for now
+#Set bottom panel to match color of right panel
 RIGHT_PANEL_COLOR = libtcod.black
 BOTTOM_PANEL_COLOR = RIGHT_PANEL_COLOR
-
-#------------
-#GUI elements
-#------------
-#BAR_WIDTH = 20
-#PANEL_HEIGHT = 7
-#PANEL_Y = SCREEN_HEIGHT - PANEL_HEIGHT
-#MSG_X = BAR_WIDTH + 2
-#MSG_WIDTH = SCREEN_WIDTH - BAR_WIDTH - 2
-#MSG_HEIGHT = PANEL_HEIGHT - 1
-#INVENTORY_WIDTH = 50
 
 #--------------------------
 #Dungeon generator settings
 #--------------------------
 ROOM_MAX_SIZE = 20
-ROOM_MIN_SIZE = 5
-MAX_ROOMS = 200
-MAX_ROOM_MONSTERS = 2
-MAX_ROOM_ITEMS = 3
-MAX_ROOM_FEATURES = 4
+ROOM_MIN_SIZE = 10
+MAX_ROOMS = 20
+MAX_ROOM_MONSTERS = 3
+MAX_ROOM_ITEMS = 5
+MAX_ROOM_FEATURES = 5
 
 #-----------------------
 #Spell ranges and damage
 #-----------------------
 #Heal spell
-HEAL_AMOUNT = 10
+HEAL_AMOUNT = 7
 
 #Confuse spell
-CONFUSE_RANGE = 8
-CONFUSE_NUM_TURNS = 15
-CONFUSION_RADIUS = 3
+CONFUSE_RANGE = 4
+CONFUSE_NUM_TURNS = 10
+CONFUSION_RADIUS = 4
 
 #Lightning spell
-LIGHTNING_RANGE = 5
-LIGHTNING_DAMAGE = 15
+LIGHTNING_RANGE = 2
+LIGHTNING_DAMAGE = 10
 
 #Fireball spell
-FIREBALL_RADIUS = 7
-FIREBALL_RANGE = 8
-FIREBALL_DAMAGE = 10
+FIREBALL_RADIUS = 6
+FIREBALL_RANGE = 6
+FIREBALL_DAMAGE = 6
 
 #-------------------------
 #Player experience stats and caps
@@ -89,6 +77,7 @@ FIREBALL_DAMAGE = 10
 LEVEL_UP_BASE = 150
 LEVEL_UP_FACTOR = 100
 DUNGEON_LEVEL = 1
+dungeon_level = 1
 
 #Spirit values
 MAX_SOULS = 10
@@ -106,7 +95,7 @@ LEVEL_SCREEN_WIDTH = 40
 CHARACTER_SCREEN_WIDTH = 30
 
 #AI values
-AI_INTEREST = 98 #percentage chance per turn that a monster will stay interested in player once out of sight
+AI_INTEREST = 95 #percentage chance per turn that a monster will stay interested in player once out of sight
 
 #-----------
 #Wall colors
@@ -117,7 +106,7 @@ color_dark_ground = libtcod.darker_grey * .5
 color_light_ground = libtcod.darker_grey
 color_ground_texture = libtcod.desaturated_red
 
-FADE_COLOR_TRANSITION = libtcod.black
+FADE_COLOR_TRANSITION = libtcod.black #Color for screen transition
 
 
 
@@ -277,7 +266,7 @@ class Object:
 
 class Fighter:
 	#combat-related properties and methods (monster, player, NPC).
-	def __init__(self, hp, defense, power, xp, move_speed, attack_speed, head=True, left_arm=True, left_leg=True, right_arm=True, right_leg=True, chest=True, death_function=None, protected=0):
+	def __init__(self, hp, defense, power, xp, move_speed, attack_speed, death_function=None, protected=0):
 		self.xp = xp
 		self.max_hp = hp
 		self.hp = hp
@@ -291,12 +280,7 @@ class Fighter:
 		self.move_speed = move_speed
 		self.attack_speed = attack_speed
 		self.protected = protected
-		self.head = head
-		self.left_arm = left_arm
-		self.left_leg = left_leg
-		self.right_arm = right_arm
-		self.right_leg = right_leg
-		self.chest = chest
+
 
 	def attack(self, target):
 		#a simple formula for attack damage
@@ -497,6 +481,7 @@ def create_room(room):
 			map[x][y].blocked = False
 			map[x][y].block_sight = False
 
+
 def create_h_tunnel(x1, x2, y):
 	global map
 	#horizontal tunnel. min() and max() are used in case x1>x2
@@ -514,6 +499,8 @@ def create_v_tunnel(y1, y2, x):
 
 def make_map():
 	global map, objects
+
+
 
 	#the list of objects with just the player
 	objects = [player]
@@ -562,6 +549,8 @@ def make_map():
 				player.x = new_x
 				player.y = new_y
 
+
+
 			else:
 				#all rooms after the first:
 				#connect it to the previous room with a tunnel
@@ -591,9 +580,9 @@ def place_boss(room):
 		x = libtcod.random_get_int(0, room.x1+1, room.x2-1)
 		y = libtcod.random_get_int(0, room.y1+1, room.y2-1)
 		blocked = is_blocked(x, y)
-	fighter_component = Fighter(hp=50, defense=10, power=15, xp=55, death_function=victory_death, move_speed=3, attack_speed=3, protected=0)
+	fighter_component = Fighter(hp=25, defense=10, power=5, xp=55, death_function=victory_death, move_speed=3, attack_speed=3, protected=0)
 	ai_component = BasicMonster()
-	monster = Object(x, y, 'C', 'Kodian Commander', libtcod.red, blocks=True, fighter=fighter_component, ai=ai_component)
+	monster = Object(x, y, 'C', 'Kodian Leader', libtcod.red, blocks=True, fighter=fighter_component, ai=ai_component)
 	objects.append(monster)
 
 	count = 0
@@ -650,23 +639,23 @@ def place_objects(room):
 		#only place it if the tile is not blocked
 		if not is_blocked(x, y):
 			chance = libtcod.random_get_int(0, 0, 100)
-			if chance < 60:  #60% chance of getting a solider
+			if chance < 50:  #60% chance of getting a solider
 				#create a soldier
-				fighter_component = Fighter(hp=10, defense=2, xp=20, power=5, death_function=monster_death, move_speed=3, attack_speed=3, protected=0)
+				fighter_component = Fighter(hp=10, defense=2, xp=10, power=5, death_function=monster_death, move_speed=3, attack_speed=3, protected=0)
 				ai_component = BasicMonster()
 
 				monster = Object(x, y, 's', 'Kodian Soldier', libtcod.white,
 					blocks=True, fighter=fighter_component, ai=ai_component)
-			elif chance < 60 + 20:
+			elif chance < 50 + 20:
 				#create a bandit
-				fighter_component = Fighter(hp=5, defense=1, xp=15, power=3, death_function=monster_death, move_speed=5, attack_speed=3, protected=0)
+				fighter_component = Fighter(hp=5, defense=1, xp=5, power=3, death_function=monster_death, move_speed=5, attack_speed=3, protected=0)
 				ai_component = BasicMonster()
 
 				monster = Object(x, y, 'b', 'Kodian Bandit', libtcod.orange,
 					blocks=True, fighter=fighter_component, ai=ai_component)
-			elif chance < 60 + 40:
+			elif chance < 50 + 40:
 				#create a guard
-				fighter_component = Fighter(hp=5, defense=1, xp=40, power=3, death_function=monster_death, move_speed=5, attack_speed=3, protected=0)
+				fighter_component = Fighter(hp=10, defense=1, xp=40, power=3, death_function=monster_death, move_speed=5, attack_speed=3, protected=0)
 				ai_component = BasicMonster()
 
 				monster = Object(x, y, 'g', 'Kodian Guard', libtcod.orange,
@@ -674,13 +663,14 @@ def place_objects(room):
 
 			else:
 				#create a knight
-				fighter_component = Fighter(hp=13, defense=1, xp=45, power=7, death_function=monster_death, move_speed=3, attack_speed=3, protected=0)
+				fighter_component = Fighter(hp=20, defense=1, xp=45, power=7, death_function=monster_death, move_speed=3, attack_speed=3, protected=0)
 				ai_component = BasicMonster()
 
 				monster = Object(x, y, 'K', 'Kodian Knight', libtcod.dark_orange,
 					blocks=True, fighter=fighter_component, ai=ai_component)
 
 			objects.append(monster)
+
 
 	#choose random number of items
 	num_items = libtcod.random_get_int(0, 0, MAX_ROOM_ITEMS)
@@ -716,6 +706,16 @@ def place_objects(room):
 			objects.append(item)
 			item.send_to_back()  #items appear below other objects
 
+def npc_name():
+
+
+	firstName_bank = ["Karles", "Reto", "Brice", "Malro", "Tericus", "Leb"]
+	lastName_bank = ["Alzen", "Lehr", "Jedin", "Cherer", "Delluc", "Seibold"]
+
+	firstName = firstName_bank[libtcod.random_get_int(0,0,len(firstName_bank) - 1)] + " "
+	lastName = lastName_bank[libtcod.random_get_int(0,0,len(lastName_bank) - 1)]
+
+	return firstName + lastName
 
 def render_bar(x, y, total_width, name, value, maximum, bar_color, back_color):
 	#render a bar (HP, experience, etc). first calculate the width of the bar
@@ -780,9 +780,6 @@ def render_all():
 	global fov_recompute
 
 	move_camera(player.x, player.y)
-
-
-
 	#calculate where monsters can see so it can be displayed
 	for y in range(MAP_HEIGHT):
 		for x in range(MAP_WIDTH):
@@ -849,20 +846,15 @@ def render_all():
 	#blit the contents of "con" to the root console
 	libtcod.console_blit(con, 0, 0, MAP_WIDTH, MAP_HEIGHT, 0, 0, 0)
 
-
 	#prepare to render the GUI panel
-
 	libtcod.console_set_background_color(panel, RIGHT_PANEL_COLOR)
-	#libtcod.console_set_background_color(player_panel, libtcod.white * 0.5)
 	libtcod.console_set_background_color(panel_bottom, BOTTOM_PANEL_COLOR)
 	libtcod.console_clear(panel_bottom)
 	libtcod.console_clear(panel)
 
-
 	#print 'messages label'
 	libtcod.console_set_foreground_color(panel_bottom, libtcod.white)
 	libtcod.console_print_left(panel_bottom, 1, 0, libtcod.BKGND_NONE, "" )
-
 
 	#print the game messages, one line at a time
 	y = 1
@@ -881,32 +873,13 @@ def render_all():
 	render_bar(1, 5, BAR_WIDTH, 'EXP', player.fighter.xp, LEVEL_UP_BASE + player.level * LEVEL_UP_FACTOR,
 		libtcod.dark_yellow, libtcod.darker_yellow)
 
-
-
-
-
-	#libtcod.console_print_ex(panel, 1, 5, libtcod.BKGND_NONE, libtcod.LEFT, 'Dungeon level ' + str(dungeon_level))
-
-	#name tooltip
-	#libtcod.console_set_foreground_color(player_panel, libtcod.white)
-	#libtcod.console_print_left(player_panel, 0, 0, libtcod.BKGND_NONE, "test")
-
 	#display names of objects under the mouse
 	libtcod.console_set_foreground_color(panel, libtcod.light_gray)
 	libtcod.console_print_left(panel, 1, 0, libtcod.BKGND_NONE, get_names_under_mouse())
 
-
 	#blit the contents of "panel" to the root console
 	libtcod.console_blit(panel, 0, 0, 20, PANEL_HEIGHT, 0, SCREEN_WIDTH-20, 0 )
 	libtcod.console_blit(panel_bottom, 0, 0, SCREEN_WIDTH, PANEL_HEIGHT, 0, 0, PANEL_Y)
-
-	#libtcod.console_blit(player_panel, 0, 0, 10, 1, 0, 0, 1)
-
-
-
-
-
-
 
 
 def message(new_msg, color = libtcod.white):
@@ -943,12 +916,6 @@ def player_move_or_attack(dx, dy):
 				player.fighter.attack(target)
 				chance = libtcod.random_get_int(0, 0, 110)
 				chance_crit = libtcod.random_get_int(0, 0, 100)
-
-
-
-
-
-
 				feature = Object(x, y, libtcod.CHAR_BLOCK1, 'pile of rubble', libtcod.light_gray, blocks=True)
 
 			else:
@@ -1056,7 +1023,7 @@ def handle_keys():
 
 		if libtcod.Key:
 			if tut == True:
-					help_story()
+
 					help_menu()
 
 					tut = False
@@ -1187,8 +1154,8 @@ def sorcerer_death(monster):
 def victory_death(monster):
 	#should be called when the final boss is dead
 	message('With the death of the ' + monster.name.capitalize() + ' you descend deeper into the depths of the fortress. ', libtcod.yellow)
-	#sound = pygame.mixer.Sound("1.wav")
-	#sound.play(loops = 0)
+	message('You have been healed for half of your health.', libtcod.red)
+	player.fighter.heal(player.fighter.max_hp / 2)  #heal the player by 50%
 	game_state = 'victory'
 	monster.char = '%'
 	monster.color = libtcod.red
@@ -1197,6 +1164,7 @@ def victory_death(monster):
 	monster.ai = None
 	monster.name = 'remains of ' + monster.name
 	monster.send_to_back()
+	dungeon_level += 1
 	make_map()
 	initialize_fov()
 
@@ -1339,8 +1307,8 @@ def cast_fireball():
 
 	for obj in objects:  #damage every fighter in range, including the player
 		if obj.distance(x, y) <= FIREBALL_RADIUS and obj.ai:
-			message(obj.name + ' hit by fire with' + str(FIREBALL_DAMAGE) + ' hit points.', libtcod.light_blue)
-			obj.fighter.take_damage(FIREBALL_DAMAGE)
+			message(obj.name + ' hit by fire for ' + str(FIREBALL_DAMAGE) + ' hit points.', libtcod.light_blue)
+			obj.fighter.take_damage(FIREBALL_DAMAGE + int(player.fighter.souls/2))
 
 def cast_confuse():
 	"""
@@ -1501,22 +1469,19 @@ def help_menu():
 	libtcod.console_flush()
 	key = libtcod.console_wait_for_keypress(True)
 
-def help_story():
+def npc_dialog():
 	#create an off-screen console that represents the menu's window
 	width = 42
 	height = 15
 	window = libtcod.console_new(width, height)
-	message1 = """Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been
-	 the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and
-	  scrambled it to make a type specimen book.  with desktop publishing software like Aldus PageMaker including
-	  versions of Lorem Ipsum."""
+
 
 	#print the header, with auto-wrap
 	libtcod.console_set_foreground_color(window, libtcod.white)
 	libtcod.console_print_center(window, 18, 0, libtcod.BKGND_NONE, 'YOU ARE THE POWERLORD')
 
 	#print all the options
-	libtcod.console_print_center(window, 0, 2, libtcod.BKGND_NONE, message1)
+	libtcod.console_print_center(window, 0, 2, libtcod.BKGND_NONE, "THis is a test you failed")
 
 	#blit the contents of "window" to the root console
 	x = SCREEN_WIDTH/2 - width/2
@@ -1556,7 +1521,7 @@ def load_game():
 
 def new_game():
 	global player, inventory, game_msgs, game_state, num_directions, directions, facings, unit_directions
-	dungeon_level = 1
+
 
 	#create object representing the player
 	fighter_component = Fighter(hp=50, defense=2, power=5, xp=0,  death_function=player_death, move_speed=3, attack_speed=3, protected=0)
@@ -1578,8 +1543,9 @@ def new_game():
 	message('If this is your first time playing, press "?" for help.', libtcod.white)
 	message('Your blade absorbs the souls of fallen enemies.', libtcod.white)
 	message('Collect souls to increase your power!', libtcod.white)
+	message(npc_name() + ': This is an NPC test message said by ' + npc_name())
 
-	#reverse fade
+
 
 
 def initialize_fov():
@@ -1639,14 +1605,6 @@ def main_menu():
 		#show the background image, at twice the regular console resolution
 		libtcod.image_set_key_color(img,libtcod.red)
 		libtcod.image_blit_2x(img, 0, 0, 0, 1, 1, SCREEN_WIDTH, SCREEN_HEIGHT)
-		#libtcod.ima
-
-
-		#show the game's title, and some credits!
-		#pygame.init()
-		#pygame.mixer.music.load('title.mp3')
-		#pygame.mixer.music.play(-1, 0.0)
-
 		libtcod.console_set_foreground_color(0, libtcod.light_yellow)
 		libtcod.console_print_center(0, SCREEN_WIDTH/2, SCREEN_HEIGHT/2-4, libtcod.BKGND_SET, 'POWERLORD')
 
@@ -1671,7 +1629,6 @@ def main_menu():
 			break
 
 libtcod.console_set_custom_font('prestige12x12_gs_tc.png', libtcod.FONT_TYPE_GRAYSCALE | libtcod.FONT_LAYOUT_TCOD)
-#libtcod.console_set_custom_font('oryx_tiles.png', libtcod.FONT_TYPE_GREYSCALE | libtcod.FONT_LAYOUT_TCOD, 32, 12)
 libtcod.console_init_root(SCREEN_WIDTH, SCREEN_HEIGHT, 'POWERLORD', False)
 libtcod.sys_set_fps(LIMIT_FPS)
 con = libtcod.console_new(MAP_WIDTH, MAP_HEIGHT)
