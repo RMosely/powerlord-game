@@ -1,5 +1,9 @@
 Requires Python 2.5+
 
-TODO:
-    # Add dynamic equipment
-    # Add spells
+# Add dynamic equipment
+# Add spells
+
+*Requires Python 2.7
+
+Run: python powerlord.py
+
