@@ -8,7 +8,6 @@ import math
 import textwrap
 import shelve
 
-
 #--------------------
 #Window size / camera
 #--------------------
@@ -16,12 +15,11 @@ SCREEN_WIDTH = 100#100
 SCREEN_HEIGHT = 70#70
 #Size of the map portion shown on-screen
 
-
 #--------
 #Map size
 #--------
-MAP_WIDTH = 100#100
-MAP_HEIGHT = 100#100
+MAP_WIDTH = 150#100
+MAP_HEIGHT = 150#100
 
 #------------
 #GUI elements
@@ -44,12 +42,12 @@ BOTTOM_PANEL_COLOR = RIGHT_PANEL_COLOR
 #--------------------------
 #Dungeon generator settings
 #--------------------------
-ROOM_MAX_SIZE = 20
-ROOM_MIN_SIZE = 10
-MAX_ROOMS = 20
-MAX_ROOM_MONSTERS = 3
-MAX_ROOM_ITEMS = 5
-MAX_ROOM_FEATURES = 5
+ROOM_MAX_SIZE = 25
+ROOM_MIN_SIZE = 15
+MAX_ROOMS = 30
+MAX_ROOM_MONSTERS = 10
+MAX_ROOM_ITEMS = 6
+MAX_ROOM_FEATURES = 6
 
 #-----------------------
 #Spell ranges and damage
@@ -85,7 +83,7 @@ MAX_SOULS = 10
 #----------------
 #LIBTCOD settings
 #----------------
-ANIMATION_FRAMES = 5
+ANIMATION_FRAMES = 10
 FOV_ALGO = 0  #default FOV algorithm
 FOV_LIGHT_WALLS = True  #light walls or not
 VIEW_RADIUS = 15
@@ -95,20 +93,18 @@ LEVEL_SCREEN_WIDTH = 40
 CHARACTER_SCREEN_WIDTH = 30
 
 #AI values
-AI_INTEREST = 95 #percentage chance per turn that a monster will stay interested in player once out of sight
+AI_INTEREST = 98 #percentage chance per turn that a monster will stay interested in player once out of sight
 
 #-----------
 #Wall colors
 #-----------
 color_dark_wall = libtcod.darker_grey
-color_light_wall = libtcod.darker_grey
+color_light_wall = libtcod.yellow
 color_dark_ground = libtcod.darker_grey * .5
 color_light_ground = libtcod.darker_grey
 color_ground_texture = libtcod.desaturated_red
 
 FADE_COLOR_TRANSITION = libtcod.black #Color for screen transition
-
-
 
 class Tile:
 	#a tile of the map and its properties
@@ -397,7 +393,6 @@ class BasicMonster:
 			self.memory_x = x
 			self.memory_y = y
 
-
 class ConfusedMonster:
 	#AI for a temporarily confused monster (reverts to previous AI after a while).
 	def __init__(self, old_ai, num_turns=CONFUSE_NUM_TURNS):
@@ -420,7 +415,6 @@ class ConfusedMonster:
 		else:  #restore the previous AI (this one will be deleted because it's not referenced anymore)
 			self.owner.ai = self.old_ai
 			message('The ' + self.owner.name + ' is no longer confused!', libtcod.red)
-
 
 class Item:
 	#an item that can be picked up and used.
@@ -481,7 +475,6 @@ def create_room(room):
 			map[x][y].blocked = False
 			map[x][y].block_sight = False
 
-
 def create_h_tunnel(x1, x2, y):
 	global map
 	#horizontal tunnel. min() and max() are used in case x1>x2
@@ -496,11 +489,8 @@ def create_v_tunnel(y1, y2, x):
 		map[x][y].blocked = False
 		map[x][y].block_sight = False
 
-
 def make_map():
 	global map, objects
-
-
 
 	#the list of objects with just the player
 	objects = [player]
@@ -597,7 +587,6 @@ def place_boss(room):
 		monster = Object(x, y, 'S', 'Kodian Ninja Wizard', libtcod.orange, blocks=True, fighter=fighter_component, ai=ai_component)
 		objects.append(monster)
 
-
 def place_objects(room):
 	#place random room features
 	num_features = libtcod.random_get_int(0, 0, MAX_ROOM_FEATURES)
@@ -639,14 +628,14 @@ def place_objects(room):
 		#only place it if the tile is not blocked
 		if not is_blocked(x, y):
 			chance = libtcod.random_get_int(0, 0, 100)
-			if chance < 50:  #60% chance of getting a solider
+			if chance < 50 + 20:  #60% chance of getting a solider
 				#create a soldier
 				fighter_component = Fighter(hp=10, defense=2, xp=10, power=5, death_function=monster_death, move_speed=3, attack_speed=3, protected=0)
 				ai_component = BasicMonster()
 
 				monster = Object(x, y, 's', 'Kodian Soldier', libtcod.white,
 					blocks=True, fighter=fighter_component, ai=ai_component)
-			elif chance < 50 + 20:
+			elif chance < 50 + 30:
 				#create a bandit
 				fighter_component = Fighter(hp=5, defense=1, xp=5, power=3, death_function=monster_death, move_speed=5, attack_speed=3, protected=0)
 				ai_component = BasicMonster()
@@ -881,7 +870,6 @@ def render_all():
 	libtcod.console_blit(panel, 0, 0, 20, PANEL_HEIGHT, 0, SCREEN_WIDTH-20, 0 )
 	libtcod.console_blit(panel_bottom, 0, 0, SCREEN_WIDTH, PANEL_HEIGHT, 0, 0, PANEL_Y)
 
-
 def message(new_msg, color = libtcod.white):
 	#split the message if necessary, among multiple lines
 	new_msg_lines = textwrap.wrap(new_msg, )
@@ -893,7 +881,6 @@ def message(new_msg, color = libtcod.white):
 
 		#add the new line as a tuple, with the text and the color
 		game_msgs.append( (line, color) )
-
 
 def player_move_or_attack(dx, dy):
 	global fov_recompute
@@ -1059,9 +1046,6 @@ def handle_keys():
 			player_pass_turn()
 
 
-
-
-
 		else:
 			#test for other keys
 
@@ -1111,17 +1095,10 @@ def player_death(player):
 	#main_menu()
 
 def monster_death(monster):
-	#transform it into a nasty corpse! it doesn't block, can't be
-	#attacked and doesn't move
-	#sound = pygame.mixer.Sound("1.wav")
-	#sound.play(loops = 0)
 	explosion_effect(monster.x, monster.y, 1, libtcod.red, color_light_ground)
 	player.fighter.souls += 1
 	if player.fighter.souls > MAX_SOULS:
 		player.fighter.souls = 10
-
-
-
 
 	message('Your blade absorbs the soul of the ' + monster.name.capitalize() + '!', libtcod.orange)
 	message('The ' + monster.name + ' is dead! You gain ' + str(monster.fighter.xp) + ' experience points.', libtcod.orange)
@@ -1133,14 +1110,11 @@ def monster_death(monster):
 	monster.name = 'remains of ' + monster.name
 	monster.send_to_back()
 
-
 def sorcerer_death(monster):
 	for obj in objects:
 		if obj.fighter:
 			if obj.fighter.protected > 0:
 				obj.fighter.protected = obj.fighter.protected - 1
-	#sound = pygame.mixer.Sound("1.wav")
-	#sound.play(loops = 0)
 	explosion_effect(monster.x, monster.y, 2, libtcod.red, color_light_ground)
 	explosion_effect(player.x, player.y, 6, libtcod.cyan, color_light_ground)
 	monster.char = '%'
@@ -1152,6 +1126,8 @@ def sorcerer_death(monster):
 	monster.send_to_back()
 
 def victory_death(monster):
+	global dungeon_level
+
 	#should be called when the final boss is dead
 	message('With the death of the ' + monster.name.capitalize() + ' you descend deeper into the depths of the fortress. ', libtcod.yellow)
 	message('You have been healed for half of your health.', libtcod.red)
@@ -1165,6 +1141,7 @@ def victory_death(monster):
 	monster.name = 'remains of ' + monster.name
 	monster.send_to_back()
 	dungeon_level += 1
+	print("You are are level " + str(dungeon_level))
 	make_map()
 	initialize_fov()
 
@@ -1279,14 +1256,11 @@ def cast_lightning():
 		message('No enemy is close enough to strike.', libtcod.red)
 		return 'cancelled'
 	else:
-		#sound = pygame.mixer.Sound("3.wav")
-		#sound.play(loops = 0)
 		explosion_effect(monster.x, monster.y, 5, libtcod.white, color_light_ground)
 		#zap it!
-		message('A lighting bolt strikes the ' + monster.name + ' with a loud thunder! The damage is ' + str(LIGHTNING_DAMAGE) + ' hit points.', libtcod.light_blue)
+		message('A lighting bolt strikes the ' + monster.name + ' for ' + str(LIGHTNING_DAMAGE) + ' hit points.', libtcod.light_blue)
 		monster.fighter.take_damage(LIGHTNING_DAMAGE)
-
-
+		player.fighter.souls = 0
 
 def cast_fireball():
 	"""
@@ -1309,6 +1283,7 @@ def cast_fireball():
 		if obj.distance(x, y) <= FIREBALL_RADIUS and obj.ai:
 			message(obj.name + ' hit by fire for ' + str(FIREBALL_DAMAGE) + ' hit points.', libtcod.light_blue)
 			obj.fighter.take_damage(FIREBALL_DAMAGE + int(player.fighter.souls/2))
+	player.fighter.souls = 0
 
 def cast_confuse():
 	"""
@@ -1332,8 +1307,6 @@ def cast_confuse():
 			obj.ai = ConfusedMonster(old_ai)
 			obj.ai.owner = obj  #tell the new component who owns it
 			message('The eyes of the ' + obj.name + ' look vacant, as he starts to stumble around!', libtcod.light_green)
-
-
 
 def explosion_effect(cx, cy, radius, inner_color, outer_color):
 	global fov_recompute
@@ -1524,7 +1497,7 @@ def new_game():
 
 
 	#create object representing the player
-	fighter_component = Fighter(hp=50, defense=2, power=5, xp=0,  death_function=player_death, move_speed=3, attack_speed=3, protected=0)
+	fighter_component = Fighter(hp=100, defense=2, power=7, xp=0,  death_function=player_death, move_speed=3, attack_speed=3, protected=0)
 	player = Object(0, 0, '@', 'The Powerlord', libtcod.white, blocks=True, fighter=fighter_component)
 	player.level = 1
 
@@ -1541,12 +1514,9 @@ def new_game():
 	#a warm welcoming message!
 	message('You kick open the gates of Castle Kovia, your blade drawn.', libtcod.white)
 	message('If this is your first time playing, press "?" for help.', libtcod.white)
-	message('Your blade absorbs the souls of fallen enemies.', libtcod.white)
 	message('Collect souls to increase your power!', libtcod.white)
+	#NPC DIAG TEST------------------------
 	message(npc_name() + ': This is an NPC test message said by ' + npc_name())
-
-
-
 
 def initialize_fov():
 	global fov_recompute, fov_map
@@ -1560,7 +1530,6 @@ def initialize_fov():
 
 	libtcod.console_clear(con)  #unexplored areas start black (which is the default background color)
 	libtcod.console_set_fade(255, libtcod.black)
-
 
 def play_game():
 	global camera_x, camera_y
@@ -1595,9 +1564,6 @@ def play_game():
 					else:
 						object.fighter.tick = object.fighter.tick - 1
 
-
-
-
 def main_menu():
 	img = libtcod.image_load('menu_background.png')
 
@@ -1613,17 +1579,14 @@ def main_menu():
 
 		if choice == 0:  #new game
 			fade_effect(FADE_COLOR_TRANSITION, 0)
-			#pygame.mixer.music.stop()
 			new_game()
 			play_game()
 		if choice == 1:  #load last game
 			try:
-				#pygame.mixer.music.stop()
 				load_game()
 			except:
 				msgbox('\n No saved game to load.\n', 24)
 				continue
-			#pygame.mixer.music.stop()
 			play_game()
 		elif choice == 2:  #quit
 			break
@@ -1635,6 +1598,5 @@ con = libtcod.console_new(MAP_WIDTH, MAP_HEIGHT)
 panel = libtcod.console_new(SCREEN_WIDTH, PANEL_HEIGHT)
 panel_bottom = libtcod.console_new(SCREEN_WIDTH, PANEL_HEIGHT)
 panel_story = libtcod.console_new(SCREEN_WIDTH, PANEL_HEIGHT)
-
 
 main_menu()
