@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #
-#POWERLORD
+# POWERLORD
 #2014 Russell Mosely
 
 import libtcodpy as libtcod
@@ -8,18 +8,23 @@ import math
 import textwrap
 import shelve
 
+#-------Real time
+PLAYER_SPEED = 1
+DEFAULT_SPEED = 8
+DEFAULT_ATTACK_SPEED = 20
+
 #--------------------
 #Window size / camera
 #--------------------
-SCREEN_WIDTH = 100#100
-SCREEN_HEIGHT = 70#70
+SCREEN_WIDTH = 100  #100
+SCREEN_HEIGHT = 70  #70
 #Size of the map portion shown on-screen
 
 #--------
 #Map size
 #--------
-MAP_WIDTH = 150#100
-MAP_HEIGHT = 150#100
+MAP_WIDTH = 100  #100
+MAP_HEIGHT = 100  #100
 
 #------------
 #GUI elements
@@ -32,7 +37,7 @@ MSG_WIDTH = SCREEN_WIDTH
 MSG_HEIGHT = PANEL_HEIGHT - 1
 INVENTORY_WIDTH = 50
 
-CAMERA_WIDTH = 80 #63
+CAMERA_WIDTH = 80  #63
 CAMERA_HEIGHT = SCREEN_HEIGHT - PANEL_HEIGHT
 
 #Set bottom panel to match color of right panel
@@ -44,9 +49,9 @@ BOTTOM_PANEL_COLOR = RIGHT_PANEL_COLOR
 #--------------------------
 ROOM_MAX_SIZE = 25
 ROOM_MIN_SIZE = 15
-MAX_ROOMS = 30
+MAX_ROOMS = 15
 MAX_ROOM_MONSTERS = 10
-MAX_ROOM_ITEMS = 6
+MAX_ROOM_ITEMS = 5
 MAX_ROOM_FEATURES = 6
 
 #-----------------------
@@ -88,27 +93,28 @@ FOV_ALGO = 0  #default FOV algorithm
 FOV_LIGHT_WALLS = True  #light walls or not
 VIEW_RADIUS = 15
 ENEMY_VIEW_RADIUS = 8
-LIMIT_FPS = 20  #20 frames-per-second maximum
+LIMIT_FPS = 40  #20 frames-per-second maximum
 LEVEL_SCREEN_WIDTH = 40
 CHARACTER_SCREEN_WIDTH = 30
 
 #AI values
-AI_INTEREST = 98 #percentage chance per turn that a monster will stay interested in player once out of sight
+AI_INTEREST = 98  #percentage chance per turn that a monster will stay interested in player once out of sight
 
 #-----------
 #Wall colors
 #-----------
 color_dark_wall = libtcod.darker_grey
-color_light_wall = libtcod.yellow
+color_light_wall = libtcod.grey
 color_dark_ground = libtcod.darker_grey * .5
 color_light_ground = libtcod.darker_grey
 color_ground_texture = libtcod.desaturated_red
 
-FADE_COLOR_TRANSITION = libtcod.black #Color for screen transition
+FADE_COLOR_TRANSITION = libtcod.black  #Color for screen transition
+
 
 class Tile:
 	#a tile of the map and its properties
-	def __init__(self, blocked, block_sight = None):
+	def __init__(self, blocked, block_sight=None):
 		self.blocked = blocked
 
 		#all tiles start unexplored
@@ -118,6 +124,7 @@ class Tile:
 		if block_sight is None: block_sight = blocked
 		self.block_sight = block_sight
 		self.seen = 0
+
 
 class Rect:
 	#a rectangle on the map. used to characterize a room.
@@ -137,17 +144,29 @@ class Rect:
 		return (self.x1 <= other.x2 and self.x2 >= other.x1 and
 				self.y1 <= other.y2 and self.y2 >= other.y1)
 
+
 class Object:
 	#this is a generic object: the player, a monster, an item, the stairs...
 	#it's always represented by a character on screen.
-	def __init__(self, x, y, char, name, color, blocks=False, fighter=None, ai=None, item=None):
+	def __init__(self, x, y, char, name, color, blocks=False, always_visible=False,  fighter=None, ai=None, item=None, equipment=None, speed=DEFAULT_SPEED):
 		self.x = x
 		self.y = y
 		self.char = char
 		self.name = name
 		self.color = color
 		self.blocks = blocks
+		self.always_visible = always_visible
 		self.fighter = fighter
+		self.speed = speed
+		self.wait = 0
+
+		self.equipment = equipment
+		if self.equipment:
+			self.equipment.owner = self
+			#there must be an Item component for the Equipment component to work properly
+			#self.item = item()
+			#self.item.owner = self
+
 		if self.fighter:  #let the fighter component know who owns it
 			self.fighter.owner = self
 
@@ -196,6 +215,8 @@ class Object:
 		else:
 			self.fighter.tick = self.fighter.tick + 1
 
+		self.wait = self.speed
+
 	def move_towards(self, target_x, target_y):
 		dx = target_x - self.x
 		dy = target_y - self.y
@@ -239,7 +260,7 @@ class Object:
 
 	def draw(self):
 		#only show if it's visible to the player
-		if libtcod.map_is_in_fov(fov_map, self.x, self.y):
+		if libtcod.map_is_in_fov(fov_map, self.x, self.y) or (self.always_visible and map[self.x][self.y].explored):
 			(x, y) = to_camera_coordinates(self.x, self.y)
 			if x is not None:
 				#set the color and then draw the character that represents this object at its position
@@ -253,6 +274,7 @@ class Object:
 						libtcod.console_put_char(con, x, y, '?', libtcod.BKGND_NONE)
 
 
+
 	def clear(self):
 		#erase the character that represents this object
 		(x, y) = to_camera_coordinates(self.x, self.y)
@@ -260,9 +282,11 @@ class Object:
 			libtcod.console_put_char(con, x, y, ' ', libtcod.BKGND_NONE)
 
 
+
 class Fighter:
 	#combat-related properties and methods (monster, player, NPC).
-	def __init__(self, hp, defense, power, xp, move_speed, attack_speed, death_function=None, protected=0):
+	def __init__(self, hp, defense, power, xp, move_speed, death_function=None, protected=0,
+				 attack_speed=DEFAULT_ATTACK_SPEED):
 		self.xp = xp
 		self.max_hp = hp
 		self.hp = hp
@@ -285,30 +309,42 @@ class Fighter:
 			self.souls = self.max_souls
 		if damage > 0 and target.fighter.protected == 0:
 			#make the target take some damage
-			message(self.owner.name.capitalize() + ' attacks ' + target.name + ' for ' + str(damage) + ' hit points.', libtcod.red)
+			message(self.owner.name.capitalize() + ' attacks ' + target.name + ' for ' + str(damage) + ' hit points.',
+					libtcod.red)
 			target.fighter.take_damage(damage)
 		elif target.fighter.protected > 0:
-			message(self.owner.name.capitalize() + ' attacks ' + target.name + ' but a mysterious force protects him.', libtcod.red)
+			message(self.owner.name.capitalize() + ' attacks ' + target.name + ' but a mysterious force protects him.',
+					libtcod.red)
 		else:
 			message(self.owner.name.capitalize() + ' attacks ' + target.name + ' but it has no effect!', libtcod.red)
-		self.tick = self.tick + self.attack_speed
+		self.tick += self.attack_speed
+		self.owner.wait = self.attack_speed
 
 	def backstab(self, target):
 		if target.fighter.protected == 0:
 			rand = libtcod.random_get_int(0, 1, 5)
 			if rand == 1:
-				message(self.owner.name.capitalize() + ' snaps the neck of the ' + target.name + ', killing him instantly!', libtcod.red)
+				message(
+					self.owner.name.capitalize() + ' snaps the neck of the ' + target.name + ', killing him instantly!',
+					libtcod.red)
 			elif rand == 2:
-				message(self.owner.name.capitalize() + ' drives his sword deep into the back of the ' + target.name + '!', libtcod.red)
+				message(
+					self.owner.name.capitalize() + ' drives his sword deep into the back of the ' + target.name + '!',
+					libtcod.red)
 			elif rand == 3:
-				message(self.owner.name.capitalize() + ' obliterates ' + target.name + 'with one savage slash!', libtcod.red)
+				message(self.owner.name.capitalize() + ' obliterates ' + target.name + 'with one savage slash!',
+						libtcod.red)
 			elif rand == 4:
-				message(self.owner.name.capitalize() + ' targets a vital artery of the ' + target.name + ' with brutal expertise!', libtcod.red)
+				message(
+					self.owner.name.capitalize() + ' targets a vital artery of the ' + target.name + ' with brutal expertise!',
+					libtcod.red)
 			elif rand == 5:
-				message(self.owner.name.capitalize() + ' guts the unaware ' + target.name + ' with one savage slash!', libtcod.red)
+				message(self.owner.name.capitalize() + ' guts the unaware ' + target.name + ' with one savage slash!',
+						libtcod.red)
 			target.fighter.take_damage(target.fighter.hp)
 		elif target.fighter.protected > 0:
-			message(self.owner.name.capitalize() + ' attacks ' + target.name + ' but mysterious magic protects him.', libtcod.red)
+			message(self.owner.name.capitalize() + ' attacks ' + target.name + ' but mysterious magic protects him.',
+					libtcod.red)
 
 		self.tick = self.tick + self.attack_speed
 
@@ -331,6 +367,7 @@ class Fighter:
 		if self.hp > self.max_hp:
 			self.hp = self.max_hp
 
+
 class BasicMonster:
 	memory_x = None
 	memory_y = None
@@ -341,17 +378,19 @@ class BasicMonster:
 		#a basic monster takes its turn. if you can see it, it can see you
 		monster = self.owner
 		#player is in fov and in range
-		if (libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and player.distance_to(monster) < ENEMY_VIEW_RADIUS) and (is_in_view(player.x, player.y, monster.x, monster.y, monster.fighter.facing) or not self.broken_los): #either the player is in front of the monster or has been seen previously
+		if (libtcod.map_is_in_fov(fov_map, monster.x, monster.y) and player.distance_to(
+				monster) < ENEMY_VIEW_RADIUS) and (is_in_view(player.x, player.y, monster.x, monster.y,
+															  monster.fighter.facing) or not self.broken_los):  #either the player is in front of the monster or has been seen previously
 			self.memory_x = player.x
 			self.memory_y = player.y
 			broken_los = False
 			#move towards player if far away
 			if monster.distance_to(player) >= 2:
 				talk = libtcod.random_get_int(0, 1, 200)
-				if talk	== 1:
+				if talk == 1:
 					message(self.owner.name + ': ' + 'The Powerlord!')
 				elif talk == 2:
-					message('The ' +  self.owner.name + ' draws his blade.')
+					message('The ' + self.owner.name + ' draws his blade.')
 				elif talk == 3:
 					message(self.owner.name + ': ' + 'No mercy!')
 				elif talk == 4:
@@ -375,16 +414,17 @@ class BasicMonster:
 				monster.fighter.attack(player)
 
 		elif self.memory_x != None and self.memory_y != None and monster.distance(self.memory_x, self.memory_y) > 0:
-		#if can't see player but has a memory of player
+			#if can't see player but has a memory of player
 			self.broken_los = True
 			monster.move_towards(self.memory_x, self.memory_y)
 
-		if (monster.x == self.memory_x and monster.y == self.memory_y) or libtcod.random_get_int(0, 0, 100) > AI_INTEREST:
+		if (monster.x == self.memory_x and monster.y == self.memory_y) or libtcod.random_get_int(0, 0,
+																								 100) > AI_INTEREST:
 			self.broken_los = True
 			self.memory_x = None
 			self.memory_y = None
 
-		if self.memory_x == None or self.memory_y == None: #fake a memory so the monster wanders to location in line of sight
+		if self.memory_x == None or self.memory_y == None:  #fake a memory so the monster wanders to location in line of sight
 			while True:
 				x = libtcod.random_get_int(0, monster.x - 10, monster.x + 10)
 				y = libtcod.random_get_int(0, monster.y - 10, monster.y + 10)
@@ -392,6 +432,7 @@ class BasicMonster:
 			self.broken_los = True
 			self.memory_x = x
 			self.memory_y = y
+
 
 class ConfusedMonster:
 	#AI for a temporarily confused monster (reverts to previous AI after a while).
@@ -405,7 +446,7 @@ class ConfusedMonster:
 			self.owner.move(libtcod.random_get_int(0, -1, 1), libtcod.random_get_int(0, -1, 1))
 			self.num_turns -= 1
 			talk = libtcod.random_get_int(0, 1, 10)
-			if talk	== 1:
+			if talk == 1:
 				message('The ' + self.owner.name + ' stumbles in circles.')
 			elif talk == 2:
 				message('The ' + self.owner.name + ' screams "Run! Its the Powerlord!"')
@@ -415,6 +456,31 @@ class ConfusedMonster:
 		else:  #restore the previous AI (this one will be deleted because it's not referenced anymore)
 			self.owner.ai = self.old_ai
 			message('The ' + self.owner.name + ' is no longer confused!', libtcod.red)
+
+
+#EQUIPMENT
+class equipment:
+	#an object that can be equipped, yielding bonuses. automatically adds the Item component.
+	def __init__(self, slot):
+		self.slot = slot
+		self.is_equipped = False
+
+	def toggle_equip(self):  #toggle equip/dequip status
+		if self.is_equipped:
+			self.dequip()
+		else:
+			self.equip()
+
+	def equip(self):
+		#equip object and show a message about it
+		self.is_equipped = True
+		message('Equipped ' + self.owner.name + ' on ' + self.slot + '.', libtcod.light_green)
+
+	def dequip(self):
+		#dequip object and show a message about it
+		if not self.is_equipped: return
+		self.is_equipped = False
+		message('Dequipped ' + self.owner.name + ' from ' + self.slot + '.', libtcod.light_yellow)
 
 class Item:
 	#an item that can be picked up and used.
@@ -439,12 +505,18 @@ class Item:
 		message('You dropped a ' + self.owner.name + '.', libtcod.yellow)
 
 	def use(self):
+		#special case: if the object has the Equipment component, the "use" action is to equip/dequip
+		if self.owner.equipment:
+			self.owner.equipment.toggle_equip()
+			return
+
 		#just call the "use_function" if it is defined
 		if self.use_function is None:
 			message('The ' + self.owner.name + ' cannot be used.')
 		else:
 			if self.use_function() != 'cancelled':
 				inventory.remove(self.owner)  #destroy after use, unless it was cancelled for some reason
+
 
 def is_blocked(x, y):
 	"""Determine if the map tile is blocked.
@@ -456,7 +528,7 @@ def is_blocked(x, y):
 		True if tile is being blocked by an object.
 
 	"""
-	
+
 	if map[x][y].blocked:
 		return True
 
@@ -467,6 +539,7 @@ def is_blocked(x, y):
 
 	return False
 
+
 def create_room(room):
 	global map
 	#go through the tiles in the rectangle and make them passable
@@ -475,12 +548,14 @@ def create_room(room):
 			map[x][y].blocked = False
 			map[x][y].block_sight = False
 
+
 def create_h_tunnel(x1, x2, y):
 	global map
 	#horizontal tunnel. min() and max() are used in case x1>x2
 	for x in range(min(x1, x2), max(x1, x2) + 1):
 		map[x][y].blocked = False
 		map[x][y].block_sight = False
+
 
 def create_v_tunnel(y1, y2, x):
 	global map
@@ -489,6 +564,7 @@ def create_v_tunnel(y1, y2, x):
 		map[x][y].blocked = False
 		map[x][y].block_sight = False
 
+
 def make_map():
 	global map, objects
 
@@ -496,9 +572,9 @@ def make_map():
 	objects = [player]
 
 	#fill map with "blocked" tiles
-	map = [[ Tile(True)
-		for y in range(MAP_HEIGHT) ]
-			for x in range(MAP_WIDTH) ]
+	map = [[Tile(True)
+			for y in range(MAP_HEIGHT)]
+		   for x in range(MAP_WIDTH)]
 
 	rooms = []
 	num_rooms = 0
@@ -546,7 +622,7 @@ def make_map():
 				#connect it to the previous room with a tunnel
 
 				#center coordinates of previous room
-				(prev_x, prev_y) = rooms[num_rooms-1].center()
+				(prev_x, prev_y) = rooms[num_rooms - 1].center()
 
 				#draw a coin (random number that is either 0 or 1)
 				if libtcod.random_get_int(0, 0, 1) == 1:
@@ -561,38 +637,43 @@ def make_map():
 			#finally, append the new room to the list
 			rooms.append(new_room)
 			num_rooms += 1
-	place_boss(rooms[num_rooms - 1]) #places the boss in the last room we created
+	place_boss(rooms[num_rooms - 1])  #places the boss in the last room we created
 
 
 def place_boss(room):
 	blocked = True
 	while blocked:
-		x = libtcod.random_get_int(0, room.x1+1, room.x2-1)
-		y = libtcod.random_get_int(0, room.y1+1, room.y2-1)
+		x = libtcod.random_get_int(0, room.x1 + 1, room.x2 - 1)
+		y = libtcod.random_get_int(0, room.y1 + 1, room.y2 - 1)
 		blocked = is_blocked(x, y)
-	fighter_component = Fighter(hp=25, defense=10, power=5, xp=55, death_function=victory_death, move_speed=3, attack_speed=3, protected=0)
+	fighter_component = Fighter(hp=25, defense=10, power=5, xp=55, death_function=victory_death, move_speed=8,
+								attack_speed=20, protected=0)
 	ai_component = BasicMonster()
 	monster = Object(x, y, 'C', 'Kodian Leader', libtcod.red, blocks=True, fighter=fighter_component, ai=ai_component)
 	objects.append(monster)
 
-	count = 0
+	count = 0  #COUNT CHANGED
 	while count < 3:
 		while blocked:
-			x = libtcod.random_get_int(0, room.x1+1, room.x2-1)
-			y = libtcod.random_get_int(0, room.y1+1, room.y2-1)
+			x = libtcod.random_get_int(0, room.x1 + 1, room.x2 - 1)
+			y = libtcod.random_get_int(0, room.y1 + 1, room.y2 - 1)
 			blocked = is_blocked(x, y)
 		count = count + 1
-		fighter_component = Fighter(hp=10, defense=2, power=5, xp=20, death_function=sorcerer_death, move_speed=4, attack_speed=3, protected=0)
+		fighter_component = Fighter(hp=10, defense=2, power=5, xp=20, death_function=sorcerer_death, move_speed=8,
+									attack_speed=20, protected=0)
 		ai_component = BasicMonster()
-		monster = Object(x, y, 'S', 'Kodian Ninja Wizard', libtcod.orange, blocks=True, fighter=fighter_component, ai=ai_component)
+		monster = Object(x, y, 'S', 'Kodian Ninja Wizard', libtcod.orange, blocks=True, fighter=fighter_component,
+						 ai=ai_component)
 		objects.append(monster)
+
 
 def place_objects(room):
 	#place random room features
 	num_features = libtcod.random_get_int(0, 0, MAX_ROOM_FEATURES)
+
 	for i in range(num_features):
-		x = libtcod.random_get_int(0, room.x1 + 2, room.x2-2)
-		y = libtcod.random_get_int(0, room.y1 + 2, room.y2-2)
+		x = libtcod.random_get_int(0, room.x1 + 2, room.x2 - 2)
+		y = libtcod.random_get_int(0, room.y1 + 2, room.y2 - 2)
 		#only place it if the tile is not blocked
 		if not is_blocked(x, y):
 			chance = libtcod.random_get_int(0, 0, 110)
@@ -622,41 +703,45 @@ def place_objects(room):
 
 	for i in range(num_monsters):
 		#choose random spot for this monster
-		x = libtcod.random_get_int(0, room.x1+1, room.x2-1)
-		y = libtcod.random_get_int(0, room.y1+1, room.y2-1)
+		x = libtcod.random_get_int(0, room.x1 + 1, room.x2 - 1)
+		y = libtcod.random_get_int(0, room.y1 + 1, room.y2 - 1)
 
 		#only place it if the tile is not blocked
 		if not is_blocked(x, y):
 			chance = libtcod.random_get_int(0, 0, 100)
 			if chance < 50 + 20:  #60% chance of getting a solider
 				#create a soldier
-				fighter_component = Fighter(hp=10, defense=2, xp=10, power=5, death_function=monster_death, move_speed=3, attack_speed=3, protected=0)
+				fighter_component = Fighter(hp=10, defense=2, xp=10, power=5, death_function=monster_death,
+											move_speed=5, attack_speed=20, protected=0)
 				ai_component = BasicMonster()
 
 				monster = Object(x, y, 's', 'Kodian Soldier', libtcod.white,
-					blocks=True, fighter=fighter_component, ai=ai_component)
+								 blocks=True, fighter=fighter_component, ai=ai_component)
 			elif chance < 50 + 30:
 				#create a bandit
-				fighter_component = Fighter(hp=5, defense=1, xp=5, power=3, death_function=monster_death, move_speed=5, attack_speed=3, protected=0)
+				fighter_component = Fighter(hp=5, defense=1, xp=5, power=3, death_function=monster_death, move_speed=4,
+											attack_speed=20, protected=0)
 				ai_component = BasicMonster()
 
 				monster = Object(x, y, 'b', 'Kodian Bandit', libtcod.orange,
-					blocks=True, fighter=fighter_component, ai=ai_component)
+								 blocks=True, fighter=fighter_component, ai=ai_component)
 			elif chance < 50 + 40:
 				#create a guard
-				fighter_component = Fighter(hp=10, defense=1, xp=40, power=3, death_function=monster_death, move_speed=5, attack_speed=3, protected=0)
+				fighter_component = Fighter(hp=10, defense=1, xp=40, power=3, death_function=monster_death,
+											move_speed=7, attack_speed=20, protected=0)
 				ai_component = BasicMonster()
 
 				monster = Object(x, y, 'g', 'Kodian Guard', libtcod.orange,
-					blocks=True, fighter=fighter_component, ai=ai_component)
+								 blocks=True, fighter=fighter_component, ai=ai_component)
 
 			else:
 				#create a knight
-				fighter_component = Fighter(hp=20, defense=1, xp=45, power=7, death_function=monster_death, move_speed=3, attack_speed=3, protected=0)
+				fighter_component = Fighter(hp=20, defense=1, xp=45, power=7, death_function=monster_death,
+											move_speed=7, attack_speed=20, protected=0)
 				ai_component = BasicMonster()
 
 				monster = Object(x, y, 'K', 'Kodian Knight', libtcod.dark_orange,
-					blocks=True, fighter=fighter_component, ai=ai_component)
+								 blocks=True, fighter=fighter_component, ai=ai_component)
 
 			objects.append(monster)
 
@@ -666,8 +751,8 @@ def place_objects(room):
 
 	for i in range(num_items):
 		#choose random spot for this item
-		x = libtcod.random_get_int(0, room.x1+1, room.x2-1)
-		y = libtcod.random_get_int(0, room.y1+1, room.y2-1)
+		x = libtcod.random_get_int(0, room.x1 + 1, room.x2 - 1)
+		y = libtcod.random_get_int(0, room.y1 + 1, room.y2 - 1)
 
 		#only place it if the tile is not blocked
 		if not is_blocked(x, y):
@@ -688,23 +773,29 @@ def place_objects(room):
 				#create a confusion scroll
 				item_component = Item(use_function=cast_confuse)
 				item = Object(x, y, '#', 'Scroll of Amnesia', libtcod.desaturated_magenta, item=item_component)
+			elif dice < 80:
+				#DEBUG - create a sword
+				equipment_component = equipment(slot='right hand')
+				item = Object(x, y, '/', 'sword', libtcod.sky, equipment=equipment_component)
+
 			else:
 				#create fireball scroll
 				item_component = Item(use_function=cast_fireball)
 				item = Object(x, y, '#', 'Scroll of Flames', libtcod.desaturated_red, item=item_component)
 			objects.append(item)
 			item.send_to_back()  #items appear below other objects
+			item.always_visible = True
+
 
 def npc_name():
-
-
 	firstName_bank = ["Karles", "Reto", "Brice", "Malro", "Tericus", "Leb"]
 	lastName_bank = ["Alzen", "Lehr", "Jedin", "Cherer", "Delluc", "Seibold"]
 
-	firstName = firstName_bank[libtcod.random_get_int(0,0,len(firstName_bank) - 1)] + " "
-	lastName = lastName_bank[libtcod.random_get_int(0,0,len(lastName_bank) - 1)]
+	firstName = firstName_bank[libtcod.random_get_int(0, 0, len(firstName_bank) - 1)] + " "
+	lastName = lastName_bank[libtcod.random_get_int(0, 0, len(lastName_bank) - 1)]
 
 	return firstName + lastName
+
 
 def render_bar(x, y, total_width, name, value, maximum, bar_color, back_color):
 	#render a bar (HP, experience, etc). first calculate the width of the bar
@@ -722,7 +813,8 @@ def render_bar(x, y, total_width, name, value, maximum, bar_color, back_color):
 	#finally, some centered text with the values
 	libtcod.console_set_foreground_color(panel, libtcod.white)
 	libtcod.console_print_center(panel, x + total_width / 2, y, libtcod.BKGND_NONE,
-		name + ': ' + str(value) + '/' + str(maximum))
+								 name + ': ' + str(value) + '/' + str(maximum))
+
 
 def get_names_under_mouse():
 	#return a string with the names of all objects under the mouse
@@ -732,10 +824,14 @@ def get_names_under_mouse():
 
 	#create a list with the names of all objects at the mouse's coordinates and in FOV
 	names = [obj.name for obj in objects
-		if obj.x == x and obj.y == y and libtcod.map_is_in_fov(fov_map, obj.x, obj.y) and is_in_view(obj.x, obj.y, player.x, player.y, player.fighter.facing)]
+			 if obj.x == x and obj.y == y and libtcod.map_is_in_fov(fov_map, obj.x, obj.y) and is_in_view(obj.x, obj.y,
+																										  player.x,
+																										  player.y,
+																										  player.fighter.facing)]
 
 	names = ', '.join(names)  #join the names, separated by commas
 	return names.capitalize()
+
 
 def move_camera(target_x, target_y):
 	global camera_x, camera_y, fov_recompute
@@ -754,6 +850,7 @@ def move_camera(target_x, target_y):
 
 	(camera_x, camera_y) = (x, y)
 
+
 def to_camera_coordinates(x, y):
 	#convert coordinates on the map to coordinates on the screen
 	(x, y) = (x - camera_x, y - camera_y)
@@ -762,6 +859,7 @@ def to_camera_coordinates(x, y):
 		return (None, None)  #if it's outside the view, return nothing
 
 	return (x, y)
+
 
 def render_all():
 	global fov_map, color_dark_wall, color_light_wall
@@ -776,12 +874,15 @@ def render_all():
 
 	for object in objects:
 		libtcod.map_compute_fov(fov_map, player.x, player.y, VIEW_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO)
-		if libtcod.map_is_in_fov(fov_map, object.x, object.y) and object.ai and is_in_view(object.x, object.y, player.x, player.y, player.fighter.facing):
+		if libtcod.map_is_in_fov(fov_map, object.x, object.y) and object.ai and is_in_view(object.x, object.y, player.x,
+																						   player.y,
+																						   player.fighter.facing):
 			libtcod.map_compute_fov(fov_map, object.x, object.y, ENEMY_VIEW_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO)
 			for y in range(object.y - ENEMY_VIEW_RADIUS, object.y + ENEMY_VIEW_RADIUS + 1):
 				for x in range(object.x - ENEMY_VIEW_RADIUS + 1, object.x + ENEMY_VIEW_RADIUS + 1):
 					if y > 0 and y < MAP_HEIGHT and x > 0 and x < MAP_WIDTH:
-						if libtcod.map_is_in_fov(fov_map, x, y) and is_in_view(x, y, object.x, object.y, object.fighter.facing):
+						if libtcod.map_is_in_fov(fov_map, x, y) and is_in_view(x, y, object.x, object.y,
+																			   object.fighter.facing):
 							distance = object.distance(x, y)
 							if distance > 0:
 								map[x][y].seen += 1 - (1 * (distance / ENEMY_VIEW_RADIUS))
@@ -789,7 +890,7 @@ def render_all():
 								map[x][y].seen = 1
 
 	if fov_recompute:
-	#recompute FOV if needed (the player moved or something)
+		#recompute FOV if needed (the player moved or something)
 		fov_recompute = False
 		libtcod.map_compute_fov(fov_map, player.x, player.y, VIEW_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO)
 		libtcod.console_clear(con)
@@ -798,7 +899,8 @@ def render_all():
 		for y in range(CAMERA_HEIGHT):
 			for x in range(CAMERA_WIDTH):
 				(map_x, map_y) = (camera_x + x, camera_y + y)
-				if libtcod.map_is_in_fov(fov_map, map_x, map_y) and is_in_view(map_x, map_y, player.x, player.y, player.fighter.facing):
+				if libtcod.map_is_in_fov(fov_map, map_x, map_y) and is_in_view(map_x, map_y, player.x, player.y,
+																			   player.fighter.facing):
 					visible = True
 				else:
 					visible = False
@@ -807,21 +909,22 @@ def render_all():
 					#if it's not visible right now, the player can only see it if it's explored
 					if map[map_x][map_y].explored:
 						if wall:
-							libtcod.console_set_back(con, x, y, color_dark_wall, libtcod.BKGND_SET)
+							#libtcod.console_set_back(con, x, y, libtcod.desaturated_green, libtcod.BKGND_SET)
+							libtcod.console_set_back(con, x, y, libtcod.darker_blue, libtcod.BKGND_SET)
 						else:
-							libtcod.console_set_back(con, x, y, color_dark_ground, libtcod.BKGND_SET)
+							libtcod.console_set_back(con, x, y, libtcod.Color(0 ,0 ,51), libtcod.BKGND_SET)
 				else:
 					#it's visible
 					if wall:
-						libtcod.console_set_back(con, x, y, color_light_wall, libtcod.BKGND_SET )
+						libtcod.console_set_back(con, x, y, color_light_wall, libtcod.BKGND_SET)
 					else:
 						if map[map_x][map_y].seen == 0:
-							libtcod.console_set_back(con, x, y, color_dark_ground, libtcod.BKGND_SET )
+							libtcod.console_set_back(con, x, y, color_dark_ground, libtcod.BKGND_SET)
 						else:
-							libtcod.console_set_back(con, x, y, libtcod.red * map[map_x][map_y].seen, libtcod.BKGND_SET )
+							libtcod.console_set_back(con, x, y, libtcod.red * map[map_x][map_y].seen, libtcod.BKGND_SET)
 						#libtcod.console_set_back(con, x, y, color_ground_texture, libtcod.BKGND_SET )
-						libtcod.console_set_fore(con, x, y, color_ground_texture)
-						libtcod.console_set_char(con, x, y, '.')
+						libtcod.console_set_back(con, x, y, color_light_ground, libtcod.BKGND_SET)
+					#libtcod.console_set_char(con, x, y, '.')
 					#since it's visible, explore it
 					map[map_x][map_y].explored = True
 
@@ -843,7 +946,7 @@ def render_all():
 
 	#print 'messages label'
 	libtcod.console_set_foreground_color(panel_bottom, libtcod.white)
-	libtcod.console_print_left(panel_bottom, 1, 0, libtcod.BKGND_NONE, "" )
+	libtcod.console_print_left(panel_bottom, 1, 0, libtcod.BKGND_NONE, "")
 
 	#print the game messages, one line at a time
 	y = 1
@@ -856,21 +959,23 @@ def render_all():
 
 	#show the player's stats
 	render_bar(1, 1, BAR_WIDTH, 'HP', player.fighter.hp, player.fighter.max_hp,
-		libtcod.desaturated_red, libtcod.darker_red)
+			   libtcod.desaturated_red, libtcod.darker_red)
 	render_bar(1, 3, BAR_WIDTH, 'SOULS', player.fighter.souls, player.fighter.max_souls,
-		libtcod.desaturated_cyan, libtcod.darker_cyan)
+			   libtcod.desaturated_cyan, libtcod.darker_cyan)
 	render_bar(1, 5, BAR_WIDTH, 'EXP', player.fighter.xp, LEVEL_UP_BASE + player.level * LEVEL_UP_FACTOR,
-		libtcod.dark_yellow, libtcod.darker_yellow)
+			   libtcod.dark_yellow, libtcod.darker_yellow)
+	libtcod.console_print_left(panel, 1, 7, libtcod.BKGND_NONE, 'Dungeon Level: ' + str(dungeon_level))
 
 	#display names of objects under the mouse
 	libtcod.console_set_foreground_color(panel, libtcod.light_gray)
 	libtcod.console_print_left(panel, 1, 0, libtcod.BKGND_NONE, get_names_under_mouse())
 
 	#blit the contents of "panel" to the root console
-	libtcod.console_blit(panel, 0, 0, 20, PANEL_HEIGHT, 0, SCREEN_WIDTH-20, 0 )
+	libtcod.console_blit(panel, 0, 0, 20, PANEL_HEIGHT, 0, SCREEN_WIDTH - 20, 0)
 	libtcod.console_blit(panel_bottom, 0, 0, SCREEN_WIDTH, PANEL_HEIGHT, 0, 0, PANEL_Y)
 
-def message(new_msg, color = libtcod.white):
+
+def message(new_msg, color=libtcod.white):
 	#split the message if necessary, among multiple lines
 	new_msg_lines = textwrap.wrap(new_msg, )
 
@@ -880,7 +985,8 @@ def message(new_msg, color = libtcod.white):
 			del game_msgs[0]
 
 		#add the new line as a tuple, with the text and the color
-		game_msgs.append( (line, color) )
+		game_msgs.append((line, color))
+
 
 def player_move_or_attack(dx, dy):
 	global fov_recompute
@@ -913,11 +1019,13 @@ def player_move_or_attack(dx, dy):
 		player.move(dx, dy)
 	fov_recompute = True
 
+
 def player_pass_turn():
 	global fov_recompute
 
 	fov_recompute = True
 	player.fighter.tick = player.fighter.tick + player.fighter.move_speed
+
 
 def closest_monster(max_range):
 	#find closest enemy, up to a maximum range, and in the player's FOV
@@ -932,6 +1040,7 @@ def closest_monster(max_range):
 				closest_enemy = object
 				closest_dist = dist
 	return closest_enemy
+
 
 def menu(header, options, width):
 	if len(options) > 26: raise ValueError('Cannot have a menu with more than 26 options.')
@@ -959,8 +1068,8 @@ def menu(header, options, width):
 		letter_index += 1
 
 	#blit the contents of "window" to the root console
-	x = SCREEN_WIDTH/2 - width/2
-	y = SCREEN_HEIGHT/2 - height/2
+	x = SCREEN_WIDTH / 2 - width / 2
+	y = SCREEN_HEIGHT / 2 - height / 2
 	libtcod.console_blit(window, 0, 0, width, height, 0, x, y, 1.0, 0.7)
 
 	#present the root console to the player and wait for a key-press
@@ -975,6 +1084,7 @@ def menu(header, options, width):
 	if index >= 0 and index < len(options): return index
 	return None
 
+
 def inventory_menu(header):
 	#show a menu with each item of the inventory as an option
 	if len(inventory) == 0:
@@ -988,32 +1098,44 @@ def inventory_menu(header):
 	if index is None or len(inventory) == 0: return None
 	return inventory[index].item
 
+
 def msgbox(text, width=50):
 	menu(text, [], width)  #use menu() as a sort of "message box"
 
 #Show help menu when player presses forward for the first time
 global tut
 tut = True
+
+
 def handle_keys():
-	global  tut
+	global tut, fov_recompute
 	key = libtcod.console_check_for_keypress(libtcod.KEY_PRESSED)
 
-	if key.vk == libtcod.KEY_ENTER and key.lalt:
-		#Alt+Enter: toggle fullscreen
-		libtcod.console_set_fullscreen(not libtcod.console_is_fullscreen())
+	#FULLSCREEN
+	#if key.vk == key.lalt:
+	#Alt+Enter: toggle fullscreen
+	#libtcod.console_set_fullscreen(not libtcod.console_is_fullscreen())
 
-	elif key.vk == libtcod.KEY_ESCAPE:
+	if key.vk == libtcod.KEY_ESCAPE:
 		return 'exit'  #exit game
 
 	if game_state == 'playing':
+		if player.wait > 0:
+			player.wait -= 1
+			fov_recompute = True
+			#player_pass_turn()
+
+			return
+
 		key_char = chr(key.c)
+		#if player.wait > 0:
+		#	player.wait -= 1
 
 		if libtcod.Key:
 			if tut == True:
+				help_menu()
 
-					help_menu()
-
-					tut = False
+				tut = False
 
 		#movement keys
 		if key.vk == libtcod.KEY_UP or key.vk == libtcod.KEY_KP8 or key_char == 'k':
@@ -1075,11 +1197,14 @@ def handle_keys():
 			if key_char == 'c':
 				#show character information
 				level_up_xp = LEVEL_UP_BASE + player.level * LEVEL_UP_FACTOR
-				msgbox('Character Information\n\nLevel: ' + str(player.level) + '\nExperience: ' + str(player.fighter.xp) +
+				msgbox(
+					'Character Information\n\nLevel: ' + str(player.level) + '\nExperience: ' + str(player.fighter.xp) +
 					'\nExperience to level up: ' + str(level_up_xp) + '\n\nMaximum HP: ' + str(player.fighter.max_hp) +
-					'\nAttack: ' + str(player.fighter.power) + '\nDefense: ' + str(player.fighter.defense), CHARACTER_SCREEN_WIDTH)
+					'\nAttack: ' + str(player.fighter.power) + '\nDefense: ' + str(player.fighter.defense),
+					CHARACTER_SCREEN_WIDTH)
 
 			return 'didnt-take-turn'
+
 
 def player_death(player):
 	#the game ended!
@@ -1092,16 +1217,19 @@ def player_death(player):
 	player.color = libtcod.red
 
 	fade_effect(libtcod.darker_red, 0)
-	#main_menu()
+
+
+#main_menu()
 
 def monster_death(monster):
-	explosion_effect(monster.x, monster.y, 1, libtcod.red, color_light_ground)
+	#explosion_effect(monster.x, monster.y, 1, libtcod.red, color_light_ground)
 	player.fighter.souls += 1
 	if player.fighter.souls > MAX_SOULS:
 		player.fighter.souls = 10
 
 	message('Your blade absorbs the soul of the ' + monster.name.capitalize() + '!', libtcod.orange)
-	message('The ' + monster.name + ' is dead! You gain ' + str(monster.fighter.xp) + ' experience points.', libtcod.orange)
+	message('The ' + monster.name + ' is dead! You gain ' + str(monster.fighter.xp) + ' experience points.',
+			libtcod.orange)
 	monster.char = '%'
 	monster.color = libtcod.red
 	monster.blocks = False
@@ -1109,6 +1237,7 @@ def monster_death(monster):
 	monster.ai = None
 	monster.name = 'remains of ' + monster.name
 	monster.send_to_back()
+
 
 def sorcerer_death(monster):
 	for obj in objects:
@@ -1125,11 +1254,14 @@ def sorcerer_death(monster):
 	monster.name = 'remains of ' + monster.name
 	monster.send_to_back()
 
+
 def victory_death(monster):
 	global dungeon_level
 
 	#should be called when the final boss is dead
-	message('With the death of the ' + monster.name.capitalize() + ' you descend deeper into the depths of the fortress. ', libtcod.yellow)
+	message(
+		'With the death of the ' + monster.name.capitalize() + ' you descend deeper into the depths of the fortress. ',
+		libtcod.yellow)
 	message('You have been healed for half of your health.', libtcod.red)
 	player.fighter.heal(player.fighter.max_hp / 2)  #heal the player by 50%
 	game_state = 'victory'
@@ -1145,6 +1277,7 @@ def victory_death(monster):
 	make_map()
 	initialize_fov()
 
+
 def check_level_up():
 	#see if the player's experience is enough to level-up
 	level_up_xp = LEVEL_UP_BASE + player.level * LEVEL_UP_FACTOR
@@ -1156,9 +1289,9 @@ def check_level_up():
 		choice = None
 		while choice == None:  #keep asking until a choice is made
 			choice = menu('Level up! Choose a stat to raise:\n',
-				['Constitution (+20 HP, from ' + str(player.fighter.max_hp) + ')',
-				'Strength (+1 attack, from ' + str(player.fighter.power) + ')',
-				'Agility (+1 defense, from ' + str(player.fighter.defense) + ')'], LEVEL_SCREEN_WIDTH)
+						  ['Constitution (+20 HP, from ' + str(player.fighter.max_hp) + ')',
+						   'Strength (+1 attack, from ' + str(player.fighter.power) + ')',
+						   'Agility (+1 defense, from ' + str(player.fighter.defense) + ')'], LEVEL_SCREEN_WIDTH)
 
 		if choice == 0:
 			player.fighter.max_hp += 20
@@ -1167,6 +1300,7 @@ def check_level_up():
 			player.fighter.power += 1
 		elif choice == 2:
 			player.fighter.defense += 1
+
 
 def target_tile(max_range=None):
 	#return the position of a tile left-clicked in player's FOV (optionally in a range), or (None,None) if right-clicked.
@@ -1185,8 +1319,9 @@ def target_tile(max_range=None):
 
 		#accept the target if the player clicked in FOV, and in case a range is specified, if it's in that range
 		if (mouse.lbutton_pressed and libtcod.map_is_in_fov(fov_map, x, y) and
-			(max_range is None or player.distance(x, y) <= max_range)):
+				(max_range is None or player.distance(x, y) <= max_range)):
 			return (x, y)
+
 
 def target_monster(max_range=None):
 	#returns a clicked monster inside FOV up to a range, or None if right-clicked
@@ -1199,6 +1334,7 @@ def target_monster(max_range=None):
 		for obj in objects:
 			if obj.x == x and obj.y == y and obj.fighter and obj != player:
 				return obj
+
 
 def closest_monster(max_range):
 	#find closest enemy, up to a maximum range, and in the player's FOV
@@ -1214,6 +1350,7 @@ def closest_monster(max_range):
 				closest_dist = dist
 	return closest_enemy
 
+
 def throw_stone():
 	#throws a stone! hopefully distracts an enemy as well
 	#ask the player for a target to throw to
@@ -1221,10 +1358,13 @@ def throw_stone():
 	(x, y) = target_tile()
 	for obj in objects:  #affects every enemy within range if they can't see the player
 		if obj.distance(x, y) <= ENEMY_VIEW_RADIUS and obj.ai:
-			if not (libtcod.map_is_in_fov(fov_map, obj.x, obj.y) and is_in_view(player.x, player.y, obj.x, obj.y, obj.fighter.facing) and player.distance_to(obj) < ENEMY_VIEW_RADIUS):
+			if not (libtcod.map_is_in_fov(fov_map, obj.x, obj.y) and is_in_view(player.x, player.y, obj.x, obj.y,
+																				obj.fighter.facing) and player.distance_to(
+					obj) < ENEMY_VIEW_RADIUS):
 				obj.ai.memory_x = x
 				obj.ai.memory_y = y
 				message('The ' + obj.name + ' is distracted by the noise!', libtcod.light_green)
+
 
 def cast_heal():
 	"""
@@ -1240,6 +1380,7 @@ def cast_heal():
 	else:
 		message('Your wounds start to feel better!', libtcod.light_violet)
 		player.fighter.heal(HEAL_AMOUNT)
+
 
 def cast_lightning():
 	"""
@@ -1258,9 +1399,11 @@ def cast_lightning():
 	else:
 		explosion_effect(monster.x, monster.y, 5, libtcod.white, color_light_ground)
 		#zap it!
-		message('A lighting bolt strikes the ' + monster.name + ' for ' + str(LIGHTNING_DAMAGE) + ' hit points.', libtcod.light_blue)
+		message('A lighting bolt strikes the ' + monster.name + ' for ' + str(LIGHTNING_DAMAGE) + ' hit points.',
+				libtcod.light_blue)
 		monster.fighter.take_damage(LIGHTNING_DAMAGE)
 		player.fighter.souls = 0
+
 
 def cast_fireball():
 	"""
@@ -1282,8 +1425,9 @@ def cast_fireball():
 	for obj in objects:  #damage every fighter in range, including the player
 		if obj.distance(x, y) <= FIREBALL_RADIUS and obj.ai:
 			message(obj.name + ' hit by fire for ' + str(FIREBALL_DAMAGE) + ' hit points.', libtcod.light_blue)
-			obj.fighter.take_damage(FIREBALL_DAMAGE + int(player.fighter.souls/2))
+			obj.fighter.take_damage(FIREBALL_DAMAGE + int(player.fighter.souls / 2))
 	player.fighter.souls = 0
+
 
 def cast_confuse():
 	"""
@@ -1306,7 +1450,9 @@ def cast_confuse():
 			old_ai = obj.ai
 			obj.ai = ConfusedMonster(old_ai)
 			obj.ai.owner = obj  #tell the new component who owns it
-			message('The eyes of the ' + obj.name + ' look vacant, as he starts to stumble around!', libtcod.light_green)
+			message('The eyes of the ' + obj.name + ' look vacant, as he starts to stumble around!',
+					libtcod.light_green)
+
 
 def explosion_effect(cx, cy, radius, inner_color, outer_color):
 	global fov_recompute
@@ -1322,22 +1468,25 @@ def explosion_effect(cx, cy, radius, inner_color, outer_color):
 				#only draw on visible floor tile
 				if not map[map_x][map_y].blocked and libtcod.map_is_in_fov(fov_map, map_x, map_y):
 					#interpolate between inner and outer color
-					r = 0.5 * radius * frame/num_frames  #the radius expands as the animation advances
+					r = 0.5 * radius * frame / num_frames  #the radius expands as the animation advances
 					sqr_dist = (map_x - cx) ** 2 + (map_y - cy) ** 2  #the squared distance from tile to center
 					#alpha increases with radius (0.9*r) and decreases with distance to center. the +0.1 prevents a division by 0 at the center.
-					alpha = (0.9*r) ** 2 / (sqr_dist + 0.1)
-					color = libtcod.color_lerp(outer_color, inner_color, min(1, alpha))  #interpolate colors. also prevent alpha > 1.
+					alpha = (0.9 * r) ** 2 / (sqr_dist + 0.1)
+					color = libtcod.color_lerp(outer_color, inner_color,
+											   min(1, alpha))  #interpolate colors. also prevent alpha > 1.
 					#interpolate between previous color and ground color (fade away from the center)
 					alpha = r ** 2 / (sqr_dist + 0.1)  #same as before, but with the full radius (r) instead of (0.9*r)
-					alpha = min(alpha, 4*(1 - frame/num_frames))  #impose on alpha an upper limit that decreases as the animation advances, so it fades out in the end
+					alpha = min(alpha, 4 * (
+						1 - frame / num_frames))  #impose on alpha an upper limit that decreases as the animation advances, so it fades out in the end
 					color = libtcod.color_lerp(color_light_ground, color, min(1, alpha))  #same as before
 					libtcod.console_set_back(con, x, y, color, libtcod.BKGND_SET)  #set the tile color
 					libtcod.console_blit(con, 0, 0, CAMERA_WIDTH, CAMERA_HEIGHT, 0, 0, 0)
 		libtcod.console_check_for_keypress()
 		libtcod.console_flush()  #show result
-	fov_recompute = True #repair the damage
+	fov_recompute = True  #repair the damage
 	render_all()
 	libtcod.console_flush()
+
 
 def fade_effect(color, direction, forward_count=255, backwards_count=0):
 	"""
@@ -1357,17 +1506,18 @@ def fade_effect(color, direction, forward_count=255, backwards_count=0):
 	"""
 	if direction == 0:
 		while forward_count > backwards_count:
-			libtcod.console_set_fade(forward_count,color)
+			libtcod.console_set_fade(forward_count, color)
 			libtcod.console_flush()
 			forward_count -= 5
 	elif direction == 1:
 		while backwards_count < forward_count:
-			libtcod.console_set_fade(backwards_count,color)
+			libtcod.console_set_fade(backwards_count, color)
 			libtcod.console_flush()
 			backwards_count += 5
 			libtcod.console_set_fade(255, FADE_COLOR_TRANSITION)
 	else:
 		print "DEBUG: Fade effect"
+
 
 def is_in_view(x1, y1, x2, y2, facing):
 	delta_x = x1 - x2
@@ -1401,6 +1551,7 @@ def is_in_view(x1, y1, x2, y2, facing):
 			return True
 	return False
 
+
 def can_walk_between(x1, y1, x2, y2):
 	libtcod.line_init(x1, y1, x2, y2)
 	test = True
@@ -1412,6 +1563,7 @@ def can_walk_between(x1, y1, x2, y2):
 			test = False
 			break
 	return test
+
 
 def help_menu():
 	#create an off-screen console that represents the menu's window
@@ -1434,13 +1586,14 @@ def help_menu():
 
 
 	#blit the contents of "window" to the root console
-	x = SCREEN_WIDTH/2 - width/2
-	y = SCREEN_HEIGHT/2 - height/2
+	x = SCREEN_WIDTH / 2 - width / 2
+	y = SCREEN_HEIGHT / 2 - height / 2
 	libtcod.console_blit(window, 0, 0, width, height, 0, x, y, 1.0, 0.7)
 
 	#present the root console to the player and wait for a key-press
 	libtcod.console_flush()
 	key = libtcod.console_wait_for_keypress(True)
+
 
 def npc_dialog():
 	#create an off-screen console that represents the menu's window
@@ -1457,13 +1610,14 @@ def npc_dialog():
 	libtcod.console_print_center(window, 0, 2, libtcod.BKGND_NONE, "THis is a test you failed")
 
 	#blit the contents of "window" to the root console
-	x = SCREEN_WIDTH/2 - width/2
-	y = SCREEN_HEIGHT/2 - height/2
+	x = SCREEN_WIDTH / 2 - width / 2
+	y = SCREEN_HEIGHT / 2 - height / 2
 	libtcod.console_blit(window, 0, 0, width, height, 0, x, y, 1.0, 0.7)
 
 	#present the root console to the player and wait for a key-press
 	libtcod.console_flush()
 	key = libtcod.console_wait_for_keypress(True)
+
 
 def save_game():
 	#open a new empty shelve (possibly overwriting an old one) to write the game data
@@ -1476,6 +1630,7 @@ def save_game():
 	file['game_state'] = game_state
 	file['dungeon_level'] = dungeon_level
 	file.close()
+
 
 def load_game():
 	#open the p  objects, player, stairs, inventory, game_msgs, game_state
@@ -1492,12 +1647,14 @@ def load_game():
 
 	initialize_fov()
 
+
 def new_game():
 	global player, inventory, game_msgs, game_state, num_directions, directions, facings, unit_directions
 
 
 	#create object representing the player
-	fighter_component = Fighter(hp=100, defense=2, power=7, xp=0,  death_function=player_death, move_speed=3, attack_speed=3, protected=0)
+	fighter_component = Fighter(hp=100, defense=2, power=7, xp=0, death_function=player_death, move_speed=PLAYER_SPEED,
+								attack_speed=3, protected=0)
 	player = Object(0, 0, '@', 'The Powerlord', libtcod.white, blocks=True, fighter=fighter_component)
 	player.level = 1
 
@@ -1518,6 +1675,9 @@ def new_game():
 	#NPC DIAG TEST------------------------
 	message(npc_name() + ': This is an NPC test message said by ' + npc_name())
 
+
+
+
 def initialize_fov():
 	global fov_recompute, fov_map
 	fov_recompute = True
@@ -1531,17 +1691,17 @@ def initialize_fov():
 	libtcod.console_clear(con)  #unexplored areas start black (which is the default background color)
 	libtcod.console_set_fade(255, libtcod.black)
 
+
 def play_game():
-	global camera_x, camera_y
+	global camera_x, camera_y, fov_recompute
 
 	player_action = None
 	(camera_x, camera_y) = (0, 0)
 
-
 	while not libtcod.console_is_window_closed():
 
 		#handle keys and exit game if needed
-		if player.fighter.tick == 0: #only do these things if it's the player's turn to move so there's not needless busy work
+		if player.fighter.tick == 0:  #only do these things if it's the player's turn to move so there's not needless busy work
 
 			#render the screen
 			render_all()
@@ -1556,23 +1716,30 @@ def play_game():
 			player.fighter.tick = player.fighter.tick - 1
 
 		#let monsters take their turn
-		if game_state == 'playing' and player_action != 'didnt-take-turn':
+		if game_state == 'playing':
 			for object in objects:
 				if object.ai:
 					if object.fighter.tick == 0:
-						object.ai.take_turn()
+						#RENDER LOOP
+						if object.wait > 0:
+							object.wait -= 1
+						else:
+							object.ai.take_turn()
+							fov_recompute = True
 					else:
-						object.fighter.tick = object.fighter.tick - 1
+						object.fighter.tick -= 1
+
 
 def main_menu():
 	img = libtcod.image_load('menu_background.png')
 
 	while not libtcod.console_is_window_closed():
 		#show the background image, at twice the regular console resolution
-		libtcod.image_set_key_color(img,libtcod.red)
+		libtcod.image_set_key_color(img, libtcod.red)
 		libtcod.image_blit_2x(img, 0, 0, 0, 1, 1, SCREEN_WIDTH, SCREEN_HEIGHT)
-		libtcod.console_set_foreground_color(0, libtcod.light_yellow)
-		libtcod.console_print_center(0, SCREEN_WIDTH/2, SCREEN_HEIGHT/2-4, libtcod.BKGND_SET, 'POWERLORD')
+		libtcod.console_set_foreground_color(0, libtcod.desaturated_red)
+		libtcod.console_print_center(0, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 4, libtcod.BKGND_SET,
+									 'Powerlord: Wizard Hunter')
 
 		#show options and wait for the player's choice
 		choice = menu('', ['New Game', 'Continue Saved Game', 'Quit'], 24)
@@ -1591,7 +1758,8 @@ def main_menu():
 		elif choice == 2:  #quit
 			break
 
-libtcod.console_set_custom_font('prestige12x12_gs_tc.png', libtcod.FONT_TYPE_GRAYSCALE | libtcod.FONT_LAYOUT_TCOD)
+
+libtcod.console_set_custom_font('Ruterminal_8x8_gs_tc.png', libtcod.FONT_LAYOUT_TCOD | libtcod.FONT_LAYOUT_TCOD)
 libtcod.console_init_root(SCREEN_WIDTH, SCREEN_HEIGHT, 'POWERLORD', False)
 libtcod.sys_set_fps(LIMIT_FPS)
 con = libtcod.console_new(MAP_WIDTH, MAP_HEIGHT)
