@@ -9,9 +9,12 @@ import textwrap
 import shelve
 
 #-------Real time
-PLAYER_SPEED = 1
+PLAYER_SPEED = 2
 DEFAULT_SPEED = 8
 DEFAULT_ATTACK_SPEED = 20
+
+#NPCs move at half speed of player
+NPC_SPEED = int(PLAYER_SPEED * 2)
 
 #--------------------
 #Window size / camera
@@ -30,7 +33,7 @@ MAP_HEIGHT = 100  #100
 #GUI elements
 #------------
 BAR_WIDTH = 20
-PANEL_HEIGHT = 9
+PANEL_HEIGHT = 15
 PANEL_Y = SCREEN_HEIGHT - PANEL_HEIGHT
 MSG_X = BAR_WIDTH + 2
 MSG_WIDTH = SCREEN_WIDTH
@@ -66,13 +69,22 @@ CONFUSE_NUM_TURNS = 10
 CONFUSION_RADIUS = 4
 
 #Lightning spell
+#Single target damage
 LIGHTNING_RANGE = 2
 LIGHTNING_DAMAGE = 10
 
 #Fireball spell
+#AOE damage
 FIREBALL_RADIUS = 6
 FIREBALL_RANGE = 6
 FIREBALL_DAMAGE = 6
+
+#Freeze spell
+#Small AOE damage and reduces movement speed
+FREEZE_RADIUS = 8
+FREEZE_RANGE = 5
+FREEZE_DAMAGE = 2
+
 
 #-------------------------
 #Player experience stats and caps
@@ -285,8 +297,8 @@ class Object:
 
 class Fighter:
 	#combat-related properties and methods (monster, player, NPC).
-	def __init__(self, hp, defense, power, xp, move_speed, death_function=None, protected=0,
-				 attack_speed=DEFAULT_ATTACK_SPEED):
+	def __init__(self, hp, defense, power, constitution, xp, move_speed, death_function=None, protected=0, head=True, l_arm=True,
+				 r_arm=True, l_leg=True, r_leg=True, attack_speed=DEFAULT_ATTACK_SPEED):
 		self.xp = xp
 		self.max_hp = hp
 		self.hp = hp
@@ -294,24 +306,91 @@ class Fighter:
 		self.max_souls = MAX_SOULS
 		self.defense = defense
 		self.power = power
+		self.constitution = constitution
 		self.death_function = death_function
 		self.facing = libtcod.random_get_int(0, 1, 8)
 		self.tick = 0
 		self.move_speed = move_speed
 		self.attack_speed = attack_speed
 		self.protected = protected
+		self.head = head
+		self.l_arm = l_arm
+		self.r_arm = r_arm
+		self.l_leg = l_leg
+		self.r_leg = r_leg
 
 
 	def attack(self, target):
 		#a simple formula for attack damage
+
 		damage = libtcod.random_get_int(0, 1, self.power + self.souls) - target.fighter.defense
+		crit_roll = libtcod.random_get_int(0, 1, 20) #1 in 10 chance to crit
 		if self.souls > self.max_souls:
 			self.souls = self.max_souls
 		if damage > 0 and target.fighter.protected == 0:
-			#make the target take some damage
-			message(self.owner.name.capitalize() + ' attacks ' + target.name + ' for ' + str(damage) + ' hit points.',
+			if crit_roll == 1:
+
+				limb_roll = libtcod.random_get_int(0, 0, 4)#roll for limb loss
+				#enemy takes double damage
+				damage *= 2 #double damage
+				message('[CRITICAL] ' + self.owner.name.capitalize() + ' attacks ' + target.name + ' for ' + str(damage) + ' damage.',
 					libtcod.red)
-			target.fighter.take_damage(damage)
+
+
+				if limb_roll == 0:
+					if target.fighter.head == True:
+						message('[CRITICAL] The force from the strike lops off the head of the ' + target.name + '.')
+						#remove head and instant-kill target
+						target.fighter.head = False
+						target.fighter.hp /= 2 #hp is changed to 1 instead of 0 to prevent god_mode bug
+				elif limb_roll == 1: #left arm
+					if target.fighter.l_arm == True:
+						message('[CRITICAL] The force from the strike crushes the LEFT ARM of the ' + target.name + '.')
+						target.fighter.l_arm = False
+						if target.name == 'The Powerlord':
+							player.fighter.power /= 2 #half the player's strength
+							message('[CRITICAL] Your strength has been halved due to limb loss!')
+						else:
+							target.fighter.power /=2
+				elif limb_roll == 2: #right arm
+					if target.fighter.r_arm == True:
+						message('[CRITICAL] The force from the strike crushes the RIGHT ARM of the ' + target.name + '.')
+						target.fighter.r_arm = False
+						if target.name == 'The Powerlord':
+							player.fighter.power /= 2 #half the player's strength
+							message('[CRITICAL] Your strength has been halved due to limb loss!')
+						else:
+							target.fighter.power /=2
+				elif limb_roll == 3: #left leg
+					if target.fighter.l_leg == True:
+						message('[CRITICAL] The force from the strike crushes the LEFT LEG of the ' + target.name + '.')
+						target.fighter.l_leg = False
+						if target.name == 'The Powerlord':
+							player.fighter.move_speed = 30 #half the player's move speed
+							message('[CRITICAL] Your movement speed has been halved!')
+						else:
+							target.fighter.move_speed *=2
+				elif limb_roll == 4: #right leg
+					if target.fighter.r_leg == True:
+						message('[CRITICAL] The force from the strike crushes the RIGHT LEG of the ' + target.name + '.')
+						target.fighter.r_leg = False
+						if target.name == 'The Powerlord':
+							player.fighter.move_speed = 30 #half the player's move speed
+							message('[CRITICAL] Your movement speed has been halved!')
+						else:
+							target.fighter.move_speed *=2
+
+
+
+
+
+
+			else:
+				#make the target take some damage
+				message(self.owner.name.capitalize() + ' attacks ' + target.name + ' for ' + str(damage) + ' damage.',
+					libtcod.desaturated_red)
+
+				target.fighter.take_damage(damage)
 		elif target.fighter.protected > 0:
 			message(self.owner.name.capitalize() + ' attacks ' + target.name + ' but a mysterious force protects him.',
 					libtcod.red)
@@ -386,7 +465,7 @@ class BasicMonster:
 			broken_los = False
 			#move towards player if far away
 			if monster.distance_to(player) >= 2:
-				talk = libtcod.random_get_int(0, 1, 200)
+				talk = libtcod.random_get_int(0, 1, 600)
 				if talk == 1:
 					message(self.owner.name + ': ' + 'The Powerlord!')
 				elif talk == 2:
@@ -433,6 +512,38 @@ class BasicMonster:
 			self.memory_x = x
 			self.memory_y = y
 
+# class BasicComp:
+#
+# 	#AI for a basic companion (combat NPC).
+#
+#
+# 	def take_turn(self):
+# 		npc = self.owner
+# 		mouse = libtcod.mouse_get_status()
+# 		#
+# 		# if mouse.lbutton_pressed == True:
+# 		# 	npc_target_x = mouse.cx
+# 		# 	npc_target_y = mouse.cy
+# 		# else:
+# 		# 	npc_target_x = player.x
+# 		# 	npc_target_y = player.y
+#
+# 		npc.move_towards(mouse.x, mouse.y)
+# 		#npc.move_towards(npc_target_x, npc_target_y)
+#
+#
+#
+#
+#
+#
+# 		# if npc.distance_to(monster.fighter) >= 2 and monster.fighter.hp > 0:
+# 		# 	message(self.owner.name + ':' + 'To arms!')
+# 		# 	npc.fighter.attack(monster.fighter)
+#
+#
+
+
+
 
 class ConfusedMonster:
 	#AI for a temporarily confused monster (reverts to previous AI after a while).
@@ -447,11 +558,11 @@ class ConfusedMonster:
 			self.num_turns -= 1
 			talk = libtcod.random_get_int(0, 1, 10)
 			if talk == 1:
-				message('The ' + self.owner.name + ' stumbles in circles.')
+				message('The ' + self.owner.name + ' fails to shield his eyes.')
 			elif talk == 2:
-				message('The ' + self.owner.name + ' screams "Run! Its the Powerlord!"')
+				message('The ' + self.owner.name + ' is blinded by the light.')
 			elif talk == 3:
-				message('The ' + self.owner.name + ' screams incoherently.')
+				message('The ' + self.owner.name + ' attemps to crawl away.')
 
 		else:  #restore the previous AI (this one will be deleted because it's not referenced anymore)
 			self.owner.ai = self.old_ai
@@ -646,11 +757,37 @@ def place_boss(room):
 		x = libtcod.random_get_int(0, room.x1 + 1, room.x2 - 1)
 		y = libtcod.random_get_int(0, room.y1 + 1, room.y2 - 1)
 		blocked = is_blocked(x, y)
-	fighter_component = Fighter(hp=25, defense=10, power=5, xp=55, death_function=victory_death, move_speed=8,
+	fighter_component = Fighter(hp=25, defense=5, power=5, constitution=0, xp=55, death_function=victory_death, move_speed=8,
 								attack_speed=20, protected=0)
 	ai_component = BasicMonster()
 	monster = Object(x, y, 'C', 'Kodian Leader', libtcod.red, blocks=True, fighter=fighter_component, ai=ai_component)
 	objects.append(monster)
+
+	#NPCS
+	# fighter_component = Fighter(hp=200, defense=100, power=5, constitution=0, xp=0, death_function=None, move_speed=4,
+	# 							attack_speed=20, protected=0)
+	# ai_component = BasicComp()
+	# npc = Object(player.x -4, player.y, 'A', npc_name(), libtcod.orange,
+	# 							 blocks=True, fighter=fighter_component, ai=ai_component)
+	# objects.append(npc)
+	#
+	# fighter_component = Fighter(hp=200, defense=100, power=5, constitution=0, xp=0, death_function=None, move_speed=8,
+	# 							attack_speed=20, protected=0)
+	# ai_component = BasicComp()
+	# npc = Object(player.x -2, player.y -2, 'B', npc_name(), libtcod.orange,
+	# 							 blocks=True, fighter=fighter_component, ai=ai_component)
+	# objects.append(npc)
+
+	# fighter_component = Fighter(hp=200, defense=10, power=5, constitution=0, xp=0, death_function=None, move_speed=12,
+	# 							attack_speed=20, protected=0)
+	# ai_component = BasicComp()
+	# npc_3 = Object(player.x -3, player.y -3, 'C', npc_name(), libtcod.orange,
+	# 							 blocks=True, fighter=fighter_component, ai=ai_component)
+	#
+	# objects.append(npc_3)
+
+
+
 
 	count = 0  #COUNT CHANGED
 	while count < 3:
@@ -659,7 +796,7 @@ def place_boss(room):
 			y = libtcod.random_get_int(0, room.y1 + 1, room.y2 - 1)
 			blocked = is_blocked(x, y)
 		count = count + 1
-		fighter_component = Fighter(hp=10, defense=2, power=5, xp=20, death_function=sorcerer_death, move_speed=8,
+		fighter_component = Fighter(hp=10, defense=2, power=5, constitution=0, xp=20, death_function=sorcerer_death, move_speed=8,
 									attack_speed=20, protected=0)
 		ai_component = BasicMonster()
 		monster = Object(x, y, 'S', 'Kodian Ninja Wizard', libtcod.orange, blocks=True, fighter=fighter_component,
@@ -711,7 +848,7 @@ def place_objects(room):
 			chance = libtcod.random_get_int(0, 0, 100)
 			if chance < 50 + 20:  #60% chance of getting a solider
 				#create a soldier
-				fighter_component = Fighter(hp=10, defense=2, xp=10, power=5, death_function=monster_death,
+				fighter_component = Fighter(hp=10, defense=0, xp=10, power=5, constitution=0, death_function=monster_death,
 											move_speed=5, attack_speed=20, protected=0)
 				ai_component = BasicMonster()
 
@@ -719,7 +856,7 @@ def place_objects(room):
 								 blocks=True, fighter=fighter_component, ai=ai_component)
 			elif chance < 50 + 30:
 				#create a bandit
-				fighter_component = Fighter(hp=5, defense=1, xp=5, power=3, death_function=monster_death, move_speed=4,
+				fighter_component = Fighter(hp=5, defense=0, xp=5, power=3, constitution=0, death_function=monster_death, move_speed=4,
 											attack_speed=20, protected=0)
 				ai_component = BasicMonster()
 
@@ -727,7 +864,7 @@ def place_objects(room):
 								 blocks=True, fighter=fighter_component, ai=ai_component)
 			elif chance < 50 + 40:
 				#create a guard
-				fighter_component = Fighter(hp=10, defense=1, xp=40, power=3, death_function=monster_death,
+				fighter_component = Fighter(hp=10, defense=0, xp=40, power=3, constitution=0, death_function=monster_death,
 											move_speed=7, attack_speed=20, protected=0)
 				ai_component = BasicMonster()
 
@@ -736,7 +873,7 @@ def place_objects(room):
 
 			else:
 				#create a knight
-				fighter_component = Fighter(hp=20, defense=1, xp=45, power=7, death_function=monster_death,
+				fighter_component = Fighter(hp=20, defense=0, xp=45, power=7, constitution=0, death_function=monster_death,
 											move_speed=7, attack_speed=20, protected=0)
 				ai_component = BasicMonster()
 
@@ -772,7 +909,11 @@ def place_objects(room):
 			elif dice < 60:
 				#create a confusion scroll
 				item_component = Item(use_function=cast_confuse)
-				item = Object(x, y, '#', 'Scroll of Amnesia', libtcod.desaturated_magenta, item=item_component)
+				item = Object(x, y, '#', 'Scroll of Light ', libtcod.desaturated_magenta, item=item_component)
+			elif dice < 70:
+				#create a freeze scroll
+				item_component = Item(use_function=cast_freeze)
+				item = Object(x, y, '#', 'Scroll of Ice', libtcod.desaturated_cyan, item=item_component)
 			elif dice < 80:
 				#DEBUG - create a sword
 				equipment_component = equipment(slot='right hand')
@@ -865,6 +1006,7 @@ def render_all():
 	global fov_map, color_dark_wall, color_light_wall
 	global color_dark_ground, color_light_ground
 	global fov_recompute
+	global follow_player
 
 	move_camera(player.x, player.y)
 	#calculate where monsters can see so it can be displayed
@@ -955,7 +1097,7 @@ def render_all():
 		libtcod.console_set_foreground_color(panel_bottom, color * mul)
 		libtcod.console_print_left(panel_bottom, 1, y, libtcod.BKGND_NONE, line)
 		y += 1
-		mul += .2
+		mul += .095
 
 	#show the player's stats
 	render_bar(1, 1, BAR_WIDTH, 'HP', player.fighter.hp, player.fighter.max_hp,
@@ -965,10 +1107,24 @@ def render_all():
 	render_bar(1, 5, BAR_WIDTH, 'EXP', player.fighter.xp, LEVEL_UP_BASE + player.level * LEVEL_UP_FACTOR,
 			   libtcod.dark_yellow, libtcod.darker_yellow)
 	libtcod.console_print_left(panel, 1, 7, libtcod.BKGND_NONE, 'Dungeon Level: ' + str(dungeon_level))
+	libtcod.console_print_left(panel, 1, 10, libtcod.BKGND_NONE, '[STATS]============')
+	libtcod.console_print_left(panel, 1, 11, libtcod.BKGND_NONE, 'STR:' +  str(player.fighter.power))
+	libtcod.console_print_left(panel, 1, 12, libtcod.BKGND_NONE, 'AGI:' +  str(player.fighter.defense))
+	libtcod.console_print_left(panel, 1, 13, libtcod.BKGND_NONE, 'CON:' +  str(player.fighter.constitution))
+
+	#determine state of command
+	# if follow_player == True:
+	# 	command_mode = 'Follow'
+	# else:
+	# 	command_mode = 'Stay'
+	#
+	# libtcod.console_print_left(panel, 1, 15, libtcod.BKGND_NONE, 'Command Mode:' +  command_mode)
+
 
 	#display names of objects under the mouse
 	libtcod.console_set_foreground_color(panel, libtcod.light_gray)
 	libtcod.console_print_left(panel, 1, 0, libtcod.BKGND_NONE, get_names_under_mouse())
+	#libtcod.console_print_left(panel, player.x - 1, player.y - 1, libtcod.BKGND_NONE, get_names_under_mouse())
 
 	#blit the contents of "panel" to the root console
 	libtcod.console_blit(panel, 0, 0, 20, PANEL_HEIGHT, 0, SCREEN_WIDTH - 20, 0)
@@ -1005,14 +1161,14 @@ def player_move_or_attack(dx, dy):
 	#attack if target found, move otherwise
 	if target is not None:
 		if is_in_view(player.x, player.y, target.x, target.y, target.fighter.facing):
-			if libtcod.random_get_int(0, 0, 15) > 1:
+			if libtcod.random_get_int(0, 0, 30) > 1:
 				player.fighter.attack(target)
-				chance = libtcod.random_get_int(0, 0, 110)
-				chance_crit = libtcod.random_get_int(0, 0, 100)
-				feature = Object(x, y, libtcod.CHAR_BLOCK1, 'pile of rubble', libtcod.light_gray, blocks=True)
+				#chance = libtcod.random_get_int(0, 0, 110)
+			#chance_crit = libtcod.random_get_int(0, 0, 100)
+			#feature = Object(x, y, libtcod.CHAR_BLOCK1, 'pile of rubble', libtcod.light_gray, blocks=True)
 
 			else:
-				message('Your swing misses!!', libtcod.white)
+			 	message('Your swing misses!!', libtcod.white)
 		else:
 			player.fighter.backstab(target)
 	else:
@@ -1273,7 +1429,7 @@ def victory_death(monster):
 	monster.name = 'remains of ' + monster.name
 	monster.send_to_back()
 	dungeon_level += 1
-	print("You are are level " + str(dungeon_level))
+	#print("You are are level " + str(dungeon_level))
 	make_map()
 	initialize_fov()
 
@@ -1296,6 +1452,7 @@ def check_level_up():
 		if choice == 0:
 			player.fighter.max_hp += 20
 			player.fighter.hp += 20
+			player.fighter.constitution += 1
 		elif choice == 1:
 			player.fighter.power += 1
 		elif choice == 2:
@@ -1420,12 +1577,38 @@ def cast_fireball():
 
 	if x is None: return 'cancelled'
 	message('A fireball suddenly appears, engulfing your target!', libtcod.light_green)
-	explosion_effect(x, y, CONFUSION_RADIUS, libtcod.light_orange, libtcod.red)
+	explosion_effect(x, y, FIREBALL_RADIUS, libtcod.light_orange, libtcod.red)
 
 	for obj in objects:  #damage every fighter in range, including the player
 		if obj.distance(x, y) <= FIREBALL_RADIUS and obj.ai:
 			message(obj.name + ' hit by fire for ' + str(FIREBALL_DAMAGE) + ' hit points.', libtcod.light_blue)
 			obj.fighter.take_damage(FIREBALL_DAMAGE + int(player.fighter.souls / 2))
+	player.fighter.souls = 0
+
+def cast_freeze():
+	'''
+
+	Ask player to determine target before casting freeze spell.
+
+	FREEZE_RADIUS
+		Radius of freeze spell.
+	FREEZE_DAMAGE
+		Damage caused by the spell.
+	'''
+	message('Left-click to choose where to cast this spell, or right-click to cancel.', libtcod.light_cyan)
+	(x, y) = target_tile()
+
+	if x is None: return 'cancelled'
+	message('A gale of frozen air freezes your enemies in place, making it hard for them to move.', libtcod.light_green)
+	explosion_effect(x, y, FREEZE_RADIUS, libtcod.white, libtcod.desaturated_cyan)
+
+	for obj in objects:  #damage every fighter in range, including the player
+		if obj.distance(x, y) <= FREEZE_RADIUS and obj.ai:
+			message(obj.name + ' frozen for ' + str(FREEZE_DAMAGE) + ' hit points.', libtcod.light_blue)
+			obj.fighter.take_damage(FREEZE_DAMAGE + int(player.fighter.souls / 2))
+			obj.fighter.move_speed = 40 #can only move once per second
+
+			obj.fighter.attack_speed = 80 #can only attack once every two seconds
 	player.fighter.souls = 0
 
 
@@ -1580,7 +1763,6 @@ def help_menu():
 	libtcod.console_print_left(window, 0, 4, libtcod.BKGND_NONE, 'g: pick get items on the ground.')
 	libtcod.console_print_left(window, 0, 5, libtcod.BKGND_NONE, 'i: use items in inventory.')
 	libtcod.console_print_left(window, 0, 6, libtcod.BKGND_NONE, 'd: drop items from inventory.')
-	libtcod.console_print_left(window, 0, 7, libtcod.BKGND_NONE, '. or num-pad 5: pass a turn.')
 	libtcod.console_print_left(window, 0, 8, libtcod.BKGND_NONE, 'Alt-enter: Switch to and from full-screen.')
 	libtcod.console_print_left(window, 0, 10, libtcod.BKGND_NONE, 'Use the mouse to look around and aim.')
 
@@ -1653,10 +1835,12 @@ def new_game():
 
 
 	#create object representing the player
-	fighter_component = Fighter(hp=100, defense=2, power=7, xp=0, death_function=player_death, move_speed=PLAYER_SPEED,
+	fighter_component = Fighter(hp=100, defense=2, power=7, constitution=0, xp=0, death_function=player_death, move_speed=PLAYER_SPEED,
 								attack_speed=3, protected=0)
 	player = Object(0, 0, '@', 'The Powerlord', libtcod.white, blocks=True, fighter=fighter_component)
 	player.level = 1
+
+
 
 	#generate map (at this point it's not drawn to the screen)
 	make_map()
@@ -1669,9 +1853,10 @@ def new_game():
 	game_msgs = []
 
 	#a warm welcoming message!
-	message('You kick open the gates of Castle Kovia, your blade drawn.', libtcod.white)
+	message('You kick open the wizard fortress gates, your blade drawn.', libtcod.white)
 	message('If this is your first time playing, press "?" for help.', libtcod.white)
-	message('Collect souls to increase your power!', libtcod.white)
+	message('Collect souls to increase your power.', libtcod.white)
+	message(' C | Kill the Leader to advance.', libtcod.white)
 	#NPC DIAG TEST------------------------
 	message(npc_name() + ': This is an NPC test message said by ' + npc_name())
 
